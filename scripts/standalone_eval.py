@@ -434,7 +434,7 @@ def fwd(cfg, model):
         top_ids = torch.argsort(top_k_weighted_scores, descending=True)[:max_k]
         top_masks = masks[top_ids, :].cpu().numpy()
         top_bboxes = bboxes[top_ids, :].cpu().numpy()
-        
+        import pdb; pdb.set_trace()
         visualize_pc_masks_and_bbox(
             pc=viz_pc.numpy(),
             color=(viz_color[i].cpu().numpy() * 255).astype(np.uint8),

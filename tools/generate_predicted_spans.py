@@ -12,11 +12,12 @@ from pathlib import Path
 import ipdb
 import pandas as pd
 import torch
-import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from accelerate import PartialState
 from accelerate.utils import gather_object
 from tqdm import tqdm
-
+from dotenv import load_dotenv
+load_dotenv()
 st = ipdb.set_trace
 
 distributed_state = PartialState()
@@ -25,19 +26,19 @@ _PREDEFINED_SPLITS_REF = {
     "sr3d_ref_scannet_train_single": ("sr3d_train.csv"),
     "sr3d_ref_scannet_val_single": ("sr3d_test.csv"),
     "sr3d_ref_scannet_train_eval_single": ("sr3d_train_eval.csv"),
-    "sr3d_ref_scannet_debug_single": ("sr3d_debug.csv"),
+    # "sr3d_ref_scannet_debug_single": ("sr3d_debug.csv"),
     # "nr3d_ref_scannet_train_single": ("nr3d_train_filtered.csv"),
-    "nr3d_ref_scannet_val_single": ("nr3d_val_filtered.csv"),
-    "nr3d_ref_scannet_train_eval_single": ("nr3d_train_eval_filtered.csv"),
-    "nr3d_ref_scannet_debug_single": ("nr3d_debug_filtered.csv"),
+    # "nr3d_ref_scannet_val_single": ("nr3d_val_filtered.csv"),
+    # "nr3d_ref_scannet_train_eval_single": ("nr3d_train_eval_filtered.csv"),
+    # "nr3d_ref_scannet_debug_single": ("nr3d_debug_filtered.csv"),
     # "nr3d_ref_scannet_anchor_train_single": ("ScanEnts3D_Nr3D_train.csv"),
     "nr3d_ref_scannet_anchor_val_single": ("ScanEnts3D_Nr3D_val.csv"),
     "nr3d_ref_scannet_anchor_train_eval_single": ("ScanEnts3D_Nr3D_train_eval.csv"),
-    "nr3d_ref_scannet_anchor_debug_single": ("ScanEnts3D_Nr3D_debug.csv"),
+    # "nr3d_ref_scannet_anchor_debug_single": ("ScanEnts3D_Nr3D_debug.csv"),
     # "scanrefer_scannet_anchor_train_single": ("ScanRefer_filtered_train_ScanEnts3D_train.csv"),
     "scanrefer_scannet_anchor_val_single": ("ScanRefer_filtered_val_ScanEnts3D_val.csv"),
     "scanrefer_scannet_anchor_train_eval_single": ("ScanRefer_filtered_train_ScanEnts3D_train_eval.csv"),
-    "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
+    # "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
     "scanrefer_scannet_test_single" : ("ScanRefer_filtered_test.csv"),
 }
 
@@ -81,10 +82,24 @@ for key, csv_file in _PREDEFINED_SPLITS_REF.items():
 all_normalized_utterances = [normalize_caption(x) for x in all_utterances]
 print(f"Found {len(all_utterances)} utterances")
 print("Loading LLaMA")
-
+token=os.environ.get("HUGGINGFACE_TOKEN")
 device = distributed_state.device
 model_id = "meta-llama/Llama-3.1-8B-Instruct"
-pipeline = transformers.pipeline("text-generation", model=model_id, model_kwargs={"torch_dtype": torch.bfloat16}, device=device)
+tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    token=token,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"  # or device_map={0: device} if single-GPU
+)
+
+# Create pipeline
+pipe = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+)
+# pipeline = transformers.pipeline("text-generation", model=model_id, model_kwargs={"torch_dtype": torch.bfloat16}, device=device)
 
 print("Pipeline loaded.")
 dataset_name = "merge"
@@ -219,12 +234,16 @@ with distributed_state.split_between_processes(combined_data) as _data:
         else:
             breakpoint()
 
-        outputs = pipeline([*messages, {"role": "user", "content": sen_caption}])
-        final_output = outputs[0]["generated_text"][-1]["content"]
+        all_text = " ".join([m["content"] for m in messages] + [sen_caption])
+        outputs = pipe(all_text, max_new_tokens=20)
+        final_output = outputs[0]["generated_text"]
+        
+        # outputs = pipeline([*messages, {"role": "user", "content": sen_caption}])
+        # final_output = outputs[0]["generated_text"][-1]["content"]
         final_output = final_output.split('\n')[0]
         final_output = final_output.rstrip()
         final_output = final_output.rstrip('.,!?')
-        print(f"INPUT: {sen_caption}, OUTPUT: {final_output}, TARGET: {final_output}")
+        # print(f"INPUT: {sen_caption}, OUTPUT: {final_output}, TARGET: {final_output}")
         all_targets.append(final_output)
 
 print(f"Rank: {distributed_state.process_index}, World Size: {distributed_state.num_processes}, generated {len(all_targets)} targets")

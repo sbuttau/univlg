@@ -381,7 +381,7 @@ class DINOv2(Backbone):
         
         freeze_vit = True
 
-        self.dtype = torch.bfloat16
+        self.dtype = torch.float16 #torch.bfloat16
         self.version = version
         self.checkpoint_name = f"{version}"
         self.unfreeze_layers = cfg.DINO_UNFREEZE_LAYERS

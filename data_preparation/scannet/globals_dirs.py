@@ -7,8 +7,8 @@
 # LICENSE file in the root directory of this source tree.
 
 # TODO: Make path generic.
-DATA_DIR = '/path/to/SEMSEG_100k/frames_square_highres' # This is path to the folder which contains the RGRB-D data (not scannet point cloud data)
-SPLITS_PATH = 'splits/scannet_splits'
+DATA_DIR = 'data/SEMSEG_100k/frames_square_highres' # This is path to the folder which contains the RGRB-D data (not scannet point cloud data)
+SPLITS_PATH = 'data/splits/scannet_splits'
 
 SPLITS = {
     'train':   f'{SPLITS_PATH}/scannetv2_train.txt',

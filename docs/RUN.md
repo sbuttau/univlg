@@ -71,7 +71,7 @@ A minimal example for SR3D-only evaluation is below:
 export CKPT_PATH="ckpts/univlg.pth"
 source scripts/setup.sh
 configure_local
-NUM_VAL_DATALOADERS=2 NUM_DATALOADERS=10 EVAL_ONLY=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 DATASETS.TRAIN "('sr3d_ref_scannet_train_5_single',)" \
 DATASETS.TEST "('sr3d_ref_scannet_val_5_single_batched',)"
 ```
@@ -135,7 +135,7 @@ To save a different data sample (assuming you have the proper datasets configure
 export CKPT_PATH="ckpts/univlg.pth"
 source scripts/setup.sh
 configure_local
-SHUFFLE_BATCHED_CAPTIONS=1 RETURN_SCENE_BATCH_SIZE=32 EVAL_ONLY=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+SHUFFLE_BATCHED_CAPTIONS=1 RETURN_SCENE_BATCH_SIZE=1 EVAL_ONLY=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 DATASETS.TRAIN "('sr3d_ref_scannet_train_single',)" \
 DATASETS.TEST "('sr3d_ref_scannet_val_single_batched',)" \
 SAVE_DATA_SAMPLE True
@@ -146,3 +146,27 @@ SAVE_DATA_SAMPLE True
 - The dataloader is CPU bound, so increase `NUM_DATALOADERS` to the number of CPUs (divided by `NUM_GPUS`) on the machine.
 - Training requires a lot of CPU memory, so ensure at least 64GB per GPU. If you run out of CPU memory, try reducing `NUM_DATALOADERS` or `NUM_VAL_DATALOADERS`.
 - To use SLURM, replace `configure_local` with `configure_slurm --partition=$SLURM_PARTITION_NAME`. Make sure to set the desired number of GPUs and nodes beforehand (e.g., `export NUM_GPUS=8` and `export NUM_MACHINES=2`).
+
+
+### [28.11.2025]
+WHAT WORKED:
+(some variables need to be set in main.sh)
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+
+export SCANNET_DATA_DIR="/workspace/univlg/data/mask3d_processed/scannet/two_scene_database.yaml"
+
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+DATASETS.TRAIN "('scanrefer_scannet_anchor_train_single',)" \
+DATASETS.TEST "('scanrefer_scannet_anchor_val_single_batched',)" \
+SAVE_DATA_SAMPLE True
+```

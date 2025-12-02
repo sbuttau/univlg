@@ -893,7 +893,7 @@ class UniVLG(nn.Module):
                 'scannet_pc': scannet_pc,
                 'scannet_p2v': scannet_p2v,
                 'captions': captions,
-                'shape': shape,
+                'shape': [bs,v,H_padded,W_padded],
                 'max_valid_points': [targets[i]['max_valid_points'] for i in range(len(targets))] if self.cfg.USE_GHOST_POINTS and decoder_3d else None
             }, output_path)
             print(f"Saved data sample to {output_path}. Exiting...")

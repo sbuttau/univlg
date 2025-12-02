@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--scannet200', action='store_true')
     args = parser.parse_args()
     
-    # for phase in ['train', 'val', 'two_scene', 'ten_scene']:
-    for phase in ['test',]:
+    for phase in ['train', 'val', 'two_scene', 'ten_scene']:
+    # for phase in ['test',]:
         print("Processing phase: ", phase)
         convert_scannet_to_coco(DATA_DIR, phase, scannet200=args.scannet200)

@@ -13,13 +13,19 @@ from pytorch3d.ops import knn_points
 from PIL import Image
 from tqdm import tqdm
 from einops import rearrange
+from pathlib import Path
+import sys
+from dotenv import load_dotenv
+load_dotenv()
 from univlg.modeling.backproject.backproject import backprojector
 import pickle
 import torch.nn.functional as F
 import ipdb
 from pathlib import Path
+import sys
 
 st = ipdb.set_trace
+
 
 split = ['train', 'validation']
 
@@ -84,7 +90,13 @@ for scene in tqdm(os.listdir(FRAME_DIR)):
         continue
 
     # load labels from data
-    points = np.load(data[scene_id]['filepath'], allow_pickle=True)
+    # import pdb; pdb.set_trace()
+    full_path = Path(data[scene_id]['filepath'])
+    base_path = MASK3D_processed
+    common_parts = [p for p in full_path.parts if p in base_path.parts]
+    start_index = full_path.parts.index(common_parts[0])
+    relative_path = Path(*full_path.parts[start_index:])
+    points = np.load(os.path.join('data/',relative_path), allow_pickle=True)
     coordinates, mask3d_colors, _, segments, labels = (
         points[:, :3],
         points[:, 3:6],
@@ -109,7 +121,7 @@ for scene in tqdm(os.listdir(FRAME_DIR)):
 
     depths = np.stack(
         [np.array(Image.open(os.path.join(FRAME_DIR, scene, 'depth_inpainted', frame))) for frame in sorted(os.listdir(os.path.join(FRAME_DIR, scene, 'depth')))])
-    depths = torch.from_numpy(depths).cuda().float() / 1000.0
+    depths = torch.from_numpy(depths.astype(np.float32)).cuda() / 1000.0
 
     poses = np.stack(
         [np.loadtxt(os.path.join(FRAME_DIR, scene, 'pose', frame)) for frame in sorted(os.listdir(os.path.join(FRAME_DIR, scene, 'pose')))]
@@ -117,7 +129,7 @@ for scene in tqdm(os.listdir(FRAME_DIR)):
 
     poses = torch.from_numpy(poses).cuda().float()
 
-    mask = torch.isinf(poses).any([1, 2])
+    mask = torch.isinf(poses).any(dim=1).any(dim=1)
 
     depths = depths[~mask]
     images = images[~mask]

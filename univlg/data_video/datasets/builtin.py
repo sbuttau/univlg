@@ -416,5 +416,5 @@ if __name__.endswith(".builtin"):
     # Register COCO datasets
     register_all_coco(_root_2d)
 
-    _root_coco_ref = os.getenv("DETECTRON2_DATASETS_2D")
+    _root_coco_ref = os.getenv("DETECTRON2_DATASETS_2D","datasets")
     register_coco_ref(_root_coco_ref)

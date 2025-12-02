@@ -31,7 +31,7 @@ You can download some pre-computed data for scannet. If you want to generate it 
 For all scripts, set the following environment variables:
 ```bash
 REF_DATASET="ckpts/scannet"
-UNIVLG_DATA_PATH="..."
+UNIVLG_DATA_PATH="..." # set this to data/
 ```
 
 ### Embeddings
@@ -43,6 +43,9 @@ uv run accelerate launch --main_process_port $RANDOM tools/generate_object_pixel
 uv run accelerate launch --main_process_port $RANDOM tools/generate_scene_image_embeddings.py # This will take approximately 30 minutes
 uv run accelerate launch --main_process_port $RANDOM tools/generate_scene_text_embeddings.py
 
+
+# i'm launching 
+accelerate launch --main_process_port 29500 tools/generate_object_pixel_counts.py
 # Less tested: You can use tools/generate_clip_sampling_data.py which computes image+text at the same time
 ```
 

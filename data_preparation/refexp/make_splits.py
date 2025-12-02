@@ -10,7 +10,7 @@ import json
 import pandas as pd
 import os
 
-SPLIT_MAIN_DIR = "splits/scannet_splits"
+SPLIT_MAIN_DIR = "data/splits/scannet_splits"
 SPLITS = {
     "train": f"{SPLIT_MAIN_DIR}/scannetv2_train.txt",
     "val": f"{SPLIT_MAIN_DIR}/scannetv2_val.txt",

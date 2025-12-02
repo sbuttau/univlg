@@ -204,10 +204,28 @@ def get_detection_dataset_dicts(
         random.seed(42)
         np.random.seed(42)
         # subsample data
-        dataset_dicts = [
-            random.sample(dataset_i_dicts, subsample_data)
-            for dataset_i_dicts in dataset_dicts
-        ]
+        # dataset_dicts = [
+            # random.sample(dataset_i_dicts, subsample_data)
+            # for dataset_i_dicts in dataset_dicts[0]
+        # ]
+
+        # dataset_dicts: [0]=objects, [1]=scenes, [2]=scene_to_id_map
+        objects, scenes, scene_to_id = dataset_dicts[0]
+
+        # Number of scenes to sample
+        num_scenes = subsample_data  # or min(len(scenes), desired_number)
+
+        # Sample scene annotations
+        sampled_scenes = random.sample(scenes, num_scenes)
+
+        # Filter objects to only include those belonging to sampled scenes
+        sampled_objects = [obj for obj in objects if obj[0]["scene_id"] in {s["image_id"] for s in sampled_scenes}]
+
+        # Filter scene_to_id_map to only include sampled scenes
+        # sampled_scene_to_id = {k: v for k, v in scene_to_id.items() if k in {s["image_id"] for s in sampled_scenes}}
+
+        # Updated dataset_dicts
+        dataset_dicts = [(sampled_objects, scenes, scene_to_id)]
 
     dataset_dicts = list(itertools.chain.from_iterable(dataset_dicts))
     has_instances = "annotations" in dataset_dicts[0]

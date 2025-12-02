@@ -172,14 +172,14 @@ def add_maskformer2_video_config(cfg):
     cfg.USE_GHOST_POINTS = (
         False  # featurizes the ghost points and do dot product with them
     )
-    cfg.SCANNET_DATA_DIR = "/path/to/mask3d_processed/scannet/train_validation_database.yaml"
+    cfg.SCANNET_DATA_DIR = "data/mask3d_processed/scannet/train_validation_database.yaml"
     cfg.S3DIS_DATA_DIR = "/path/to/SEMSEG_100k/s3dis/train_validation_database.yaml"
     cfg.INPUT.RENDER_COLOR = False
     cfg.INPUT.RENDER_DEPTH = False
     cfg.SKIP_CLASSES = None
-    cfg.VISUALIZE = False
+    cfg.VISUALIZE = True
     cfg.FEATURE_VIS = False
-    cfg.VISUALIZE_LOG_DIR = "/path/to/language_grounding/visualizations/default"
+    cfg.VISUALIZE_LOG_DIR = "outputs/visualizations"
     cfg.DO_TRILINEAR_INTERPOLATION = True
     cfg.INTERP_NEIGHBORS = 8
     cfg.MODEL.INTERPOLATION_METHOD = "nearest"
@@ -219,20 +219,20 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.FRAME_LEFT_2D = cfg.INPUT.FRAME_LEFT
     cfg.INPUT.FRAME_RIGHT_2D = cfg.INPUT.FRAME_RIGHT
     cfg.INPUT.SAMPLING_FRAME_NUM_2D = cfg.INPUT.SAMPLING_FRAME_NUM
-    cfg.TEST.SUBSAMPLE_DATA = None
+    cfg.TEST.SUBSAMPLE_DATA = 2
     cfg.TRAIN_SUBSAMPLE_DATA = None
-    cfg.DATASETS.TEST_SUBSAMPLED = []
+    cfg.DATASETS.TEST_SUBSAMPLED = ['scanrefer_scannet_anchor_val_single_batched']
     cfg.DATASETS.TRAIN_SUBSAMPLED = []
     cfg.NOT_USE_WD_PRETRAINED = False
     cfg.MEAN_CENTER = False
     cfg.FORCE_DECODER_3D = False
     cfg.SKIP_CLASSES_2D = cfg.SKIP_CLASSES
-    cfg.VISUALIZE_PRED = False
+    cfg.VISUALIZE_PRED = True
     cfg.INPUT.MIN_SIZE_TEST_2D = cfg.INPUT.MIN_SIZE_TEST
     cfg.INPUT.MAX_SIZE_TEST_2D = cfg.INPUT.MAX_SIZE_TEST
     cfg.INPUT.IMAGE_SIZE_2D = cfg.INPUT.IMAGE_SIZE
-    cfg.MATTERPORT_DATA_DIR = "/path/to/mask3d_processed/matterport/train_validation_database.yaml"
-    cfg.SCANNET200_DATA_DIR = "/path/to/mask3d_processed/scannet200/train_validation_database.yaml"
+    cfg.MATTERPORT_DATA_DIR = "data/mask3d_processed/matterportmatterport/train_validation_database.yaml"
+    cfg.SCANNET200_DATA_DIR = "data/mask3d_processed/scannet200/train_validation_database.yaml"
     cfg.AUGMENT_WITH_3D_SCALE = False
     cfg.BALANCE_3D_DATASETS = False
     cfg.MODEL.NO_DECODER_PANET = False
@@ -250,7 +250,7 @@ def add_maskformer2_video_config(cfg):
     cfg.USE_ESTIMATED_DEPTH_FOR_2D = False
     cfg.USE_WANDB = False
     cfg.NO_POS = False
-    cfg.WANDB_NAME = None
+    cfg.WANDB_NAME = "sara-buttau"
     cfg.PROB = None
     cfg.NON_PARAM_RELATIVE = False
     cfg.EVALUATE_SUBSET_ZERO_OUT = False
@@ -321,7 +321,7 @@ def add_maskformer2_video_config(cfg):
     cfg.MATCHING_MASK_WEIGHT = None
     cfg.MATCHING_DICE_WEIGHT = None
     cfg.VIS_LANG_ATTN = False
-    cfg.VISUALIZE_REF = False
+    cfg.VISUALIZE_REF = True
     cfg.FORCE_SUBSAMPLE = False
     cfg.USE_MASK_FEATURES_FOR_ATTN = False
     cfg.LOAD_SCANENTS = False

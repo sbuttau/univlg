@@ -9,48 +9,48 @@ import os
 from pathlib import Path
 import json
 
-import ipdb
+
 import pandas as pd
 import torch
 from transformers import AutoModel
 from accelerate import PartialState
 from accelerate.utils import gather, gather_object
-
-st = ipdb.set_trace
+from dotenv import load_dotenv
+load_dotenv()
 
 _PREDEFINED_SPLITS_REF = {
     "sr3d_ref_scannet_train_single": ("sr3d_train.csv"),
     "sr3d_ref_scannet_val_single": ("sr3d_test.csv"),
     "sr3d_ref_scannet_train_eval_single": ("sr3d_train_eval.csv"),
-    "sr3d_ref_scannet_debug_single": ("sr3d_debug.csv"),
+    # "sr3d_ref_scannet_debug_single": ("sr3d_debug.csv"),
 
-    "nr3d_ref_scannet_train_single": ("nr3d_train_filtered.csv"),
-    "nr3d_ref_scannet_val_single": ("nr3d_val_filtered.csv"),
-    "nr3d_ref_scannet_train_eval_single": ("nr3d_train_eval_filtered.csv"),
-    "nr3d_ref_scannet_debug_single": ("nr3d_debug_filtered.csv"),
+    # "nr3d_ref_scannet_train_single": ("nr3d_train_filtered.csv"),
+    # "nr3d_ref_scannet_val_single": ("nr3d_val_filtered.csv"),
+    # "nr3d_ref_scannet_train_eval_single": ("nr3d_train_eval_filtered.csv"),
+    # "nr3d_ref_scannet_debug_single": ("nr3d_debug_filtered.csv"),
 
     "nr3d_ref_scannet_anchor_train_single": ("ScanEnts3D_Nr3D_train.csv"),
     "nr3d_ref_scannet_anchor_val_single": ("ScanEnts3D_Nr3D_val.csv"),
     "nr3d_ref_scannet_anchor_train_eval_single": ("ScanEnts3D_Nr3D_train_eval.csv"),
-    "nr3d_ref_scannet_anchor_debug_single": ("ScanEnts3D_Nr3D_debug.csv"),
+    # "nr3d_ref_scannet_anchor_debug_single": ("ScanEnts3D_Nr3D_debug.csv"),
 
     "scanrefer_scannet_anchor_train_single": ("ScanRefer_filtered_train_ScanEnts3D_train.csv"),
     "scanrefer_scannet_anchor_val_single": ("ScanRefer_filtered_val_ScanEnts3D_val.csv"),
     "scanrefer_scannet_anchor_train_eval_single": ("ScanRefer_filtered_train_ScanEnts3D_train_eval.csv"),
-    "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
+    # "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
 
-    'scanqa_ref_scannet_train_single': ('ScanQA_v1.0_train.json'),
-    'scanqa_ref_scannet_val_single': ('ScanQA_v1.0_val.json'),
-    'scanqa_ref_scannet_test_single': ('ScanQA_v1.0_test_w_obj.json'),
-    'scanqa_ref_scannet_debug_single': ('ScanQA_v1.0_debug_train_2.json'),
-    'scanqa_ref_scannet_debug_test_single': ('ScanQA_v1.0_debug_test.json'),
-    'scanqa_ref_scannet_train_eval_single': ('ScanQA_v1.0_train_eval.json'),
+    # 'scanqa_ref_scannet_train_single': ('ScanQA_v1.0_train.json'),
+    # 'scanqa_ref_scannet_val_single': ('ScanQA_v1.0_val.json'),
+    # 'scanqa_ref_scannet_test_single': ('ScanQA_v1.0_test_w_obj.json'),
+    # # 'scanqa_ref_scannet_debug_single': ('ScanQA_v1.0_debug_train_2.json'),
+    # # 'scanqa_ref_scannet_debug_test_single': ('ScanQA_v1.0_debug_test.json'),
+    # 'scanqa_ref_scannet_train_eval_single': ('ScanQA_v1.0_train_eval.json'),
 
-    'sqa3d_ref_scannet_train_single': ('SQA_train.json'),
-    'sqa3d_ref_scannet_val_single': ('SQA_val.json'),
-    'sqa3d_ref_scannet_test_single': ('SQA_test.json'),
-    'sqa3d_ref_scannet_debug_single': ('SQA_debug.json'),
-    'sqa3d_ref_scannet_train_eval_single': ('SQA_train_eval.json'),
+    # 'sqa3d_ref_scannet_train_single': ('SQA_train.json'),
+    # 'sqa3d_ref_scannet_val_single': ('SQA_val.json'),
+    # 'sqa3d_ref_scannet_test_single': ('SQA_test.json'),
+    # # 'sqa3d_ref_scannet_debug_single': ('SQA_debug.json'),
+    # 'sqa3d_ref_scannet_train_eval_single': ('SQA_train_eval.json'),
 }
 
 distributed_state = PartialState()

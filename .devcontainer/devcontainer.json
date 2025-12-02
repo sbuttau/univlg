@@ -1,0 +1,19 @@
+{
+  "name": "univlg",
+  "image": "univlg:latest",
+  "workspaceFolder": "/workspace/univlg",
+  "mounts": [
+    "source=/home/sara/projects/univlg,target=/workspace/univlg,type=bind",
+    "source=/home/sara/projects/data,target=/data,type=bind"
+  ],
+  "remoteUser": "root",
+  "runArgs": [
+    "--network=host",
+    "--privileged",
+    "--gpus", "all",
+    "-e", "DISPLAY=${localEnv:DISPLAY}",
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix",
+    "-e", "QT_X11_NO_MITSHM=1" ,  // Helps with Open3D/OpenGL
+    "--shm-size=32G"
+  ]
+}

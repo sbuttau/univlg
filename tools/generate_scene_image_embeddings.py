@@ -18,7 +18,8 @@ from transformers import AutoModel
 from accelerate import PartialState
 from accelerate.utils import gather, gather_object
 st = ipdb.set_trace
-
+from dotenv import load_dotenv
+load_dotenv()
 split = ['train', 'validation']
 
 UNIVLG_DATA_PATH = Path(os.getenv('UNIVLG_DATA_PATH'))
