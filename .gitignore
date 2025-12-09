@@ -190,3 +190,4 @@ output/
 ignore/
 data/
 .env
+pytorch3d/
