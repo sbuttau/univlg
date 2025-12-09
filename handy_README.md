@@ -12,6 +12,11 @@ Data is stored by default under `ckpts/misc`.
 (some variables need to be hardcoded in main.sh)
 
 | NOTE: to use subsample data you need to set `DATASETS.TEST.SUMBSAMPLE_DATA` and DATASETS.TEST_SUBSAMPLED in `univlg/config.py`: `add_mask2former2_video_config`.
+
+Before starting the scripts, make sure you logged in on wandb: 
+```bash 
+wandb login
+```
 Ex.
 ```python
 cfg.TEST.SUBSAMPLE_DATA = 2
@@ -44,12 +49,12 @@ SAVE_DATA_SAMPLE True
 TODO: need to check if RAM loading can be lightened
 
 Once the data is stored, you can run a standalone eval to visualize your results:
-
+```bash
 export CKPT_PATH="ckpts/univlg.pth"
 source scripts/setup.sh
 configure_local
 USE_STANDALONE=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 USE_AUTO_NOUN_DETECTION False \
 USE_SEGMENTS False
-
+```
 it will save an output folder with the instructions to open the visualizer online (you should do `cd to your folder` and then `python -m http.server 6008` or to your favorite port).

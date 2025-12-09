@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    && rm -rf /var/lib/apt/lists/* \
     python3.10 \
     python3.10-dev \
     python3-pip \
     python3-venv \
     python-is-python3 \
     sudo \
+    ssh \
     git \
     wget \
     curl \
@@ -40,21 +40,21 @@ RUN pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
 # ---- torch-scatter for PyTorch 2.1 + cu118 ----
 RUN pip install torch-scatter==2.1.2 \
     -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
-RUN python -c "import torch; print('Torch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())"
-# ---- Detectron2 wheel for torch 2.1 + cu118 ----
-RUN git clone https://github.com/facebookresearch/detectron2.git
-RUN python -m pip install -e detectron2 --no-build-isolation
+
+    # ---- Detectron2 wheel for torch 2.1 + cu118 ----
+RUN git clone https://github.com/facebookresearch/detectron2.git \
+    && python -m pip install -e detectron2 --no-build-isolation
 
 # ---- Flash-attn (works with torch 2.1) ----
 RUN pip install psutil numpy
 RUN pip install flash-attn==2.6.3 --no-build-isolation
 
 # Workspace
-WORKDIR /workspace/univlg
-COPY . /workspace/univlg
+WORKDIR /workspaces/univlg
+COPY ./docs ./docs
 
 # Install project deps
-RUN pip install -r /workspace/univlg/docs/requirements.txt
+RUN pip install -r ./docs/requirements.txt
 
 # NLP optional stuff
 RUN pip install spacy
@@ -62,8 +62,23 @@ RUN python -m spacy download en_core_web_sm
 RUN python -c "import nltk; nltk.download('stopwords')"
 
 RUN pip install git+https://github.com/waspinator/pycococreator.git
-
-# Init script
-RUN bash docs/init.sh
+RUN pip install transformers==4.44
+COPY ./libs ./libs
+ENV TORCH_CUDA_ARCH_LIST="6.1"
+WORKDIR /workspaces/univlg/libs/pointops2
+RUN pip install --no-build-isolation -e . 
 
 CMD ["/bin/bash"]
+
+# Add users
+ARG GROUP_NAME=vimp
+ARG DEVOPS_GID=2000
+
+ARG USERNAME=sara
+ARG USER_UID=1001
+ARG USER_GID=1001
+
+# create the user with sudo rights
+RUN groupadd --gid $DEVOPS_GID $GROUP_NAME \
+    && useradd --uid $USER_UID --gid $DEVOPS_GID -s /bin/bash -m $USERNAME \
+    && echo "%$GROUP_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers

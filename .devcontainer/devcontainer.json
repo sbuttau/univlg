@@ -1,19 +1,40 @@
 {
-  "name": "univlg",
-  "image": "univlg:latest",
-  "workspaceFolder": "/workspace/univlg",
+  "name": "univlg-container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../"
+  },
+  "workspaceFolder": "/workspaces/univlg",
   "mounts": [
-    "source=/home/sara/projects/univlg,target=/workspace/univlg,type=bind",
+    // "source=/home/sara/projects/univlg,target=/workspaces/univlg,type=bind",
     "source=/home/sara/projects/data,target=/data,type=bind"
   ],
-  "remoteUser": "root",
+  "remoteUser": "sara",
+  "remoteEnv": {
+    "PATH": "/home/sara/.local/bin:${containerEnv:PATH}"
+  },
   "runArgs": [
     "--network=host",
     "--privileged",
     "--gpus", "all",
     "-e", "DISPLAY=${localEnv:DISPLAY}",
     "-v", "/tmp/.X11-unix:/tmp/.X11-unix",
-    "-e", "QT_X11_NO_MITSHM=1" ,  // Helps with Open3D/OpenGL
+    "-e", "QT_X11_NO_MITSHM=1" ,  
     "--shm-size=32G"
-  ]
+  ],
+  "customizations": {
+    "vscode": {
+        "extensions": [
+            "ms-vscode.cpptools-extension-pack",
+            "mhutchie.git-graph",
+            "letmaik.git-tree-compare",
+            "GitHub.copilot",
+            "ms-python.python",
+            "ms-python.mypy-type-checker",
+            "gruntfuggly.todo-tree"
+        ]
+    }
+  },
+  "postStartCommand": "sudo chown -R sara:vimp /workspaces/univlg",
+  "postCreateCommand": "bash .devcontainer/postCreate.sh"
 }
