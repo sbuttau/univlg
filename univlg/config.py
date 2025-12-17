@@ -162,7 +162,7 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.SAMPLE_CHUNK_AUG = False
     cfg.INPUT.VOXELIZE = False
     cfg.INPUT.VOXEL_SIZE = [0.02, 0.04, 0.08, 0.16]
-    cfg.DATALOADER.TEST_NUM_WORKERS = 4
+    cfg.DATALOADER.TEST_NUM_WORKERS = 0
     cfg.MODEL.CROSS_VIEW_BACKBONE = False
     cfg.INPUT.ORIGINAL_EVAL = False
     cfg.INPUT.UNIFORM_SAMPLE = False
@@ -177,7 +177,7 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.RENDER_COLOR = False
     cfg.INPUT.RENDER_DEPTH = False
     cfg.SKIP_CLASSES = None
-    cfg.VISUALIZE = True
+    cfg.VISUALIZE = False
     cfg.FEATURE_VIS = False
     cfg.VISUALIZE_LOG_DIR = "outputs/visualizations"
     cfg.DO_TRILINEAR_INTERPOLATION = True
@@ -221,7 +221,7 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.SAMPLING_FRAME_NUM_2D = cfg.INPUT.SAMPLING_FRAME_NUM
     cfg.TEST.SUBSAMPLE_DATA = 2
     cfg.TRAIN_SUBSAMPLE_DATA = None
-    cfg.DATASETS.TEST_SUBSAMPLED = ['scanrefer_scannet_anchor_val_single_batched']
+    cfg.DATASETS.TEST_SUBSAMPLED = ['scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','sr3d_ref_scannet_val_single_batched', 'scannet200_context_instance_train_200cls_single_highres_100k']
     cfg.DATASETS.TRAIN_SUBSAMPLED = []
     cfg.NOT_USE_WD_PRETRAINED = False
     cfg.MEAN_CENTER = False
@@ -419,7 +419,7 @@ def add_maskformer2_video_config(cfg):
     cfg.DINO_EVAL_BATCH_SIZE = 1
     cfg.TEST_DATASET_INFERENCE = False
     cfg.TEST_RESULT_EXPORT_PATH = None
-    cfg.WANDB_ENTITY = None
+    cfg.WANDB_ENTITY = "sara-buttau"
     cfg.AR_LLM = False
     cfg.AR_EMBED = False
     cfg.AR_INSTRUCT = False

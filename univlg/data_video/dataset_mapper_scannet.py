@@ -129,8 +129,8 @@ class ScannetDatasetMapper:
             self.frame_right = cfg.INPUT.FRAME_RIGHT_2D
             self.num_frames = cfg.INPUT.SAMPLING_FRAME_NUM_2D
 
-        print("frame left: ", self.frame_left)
-        print("frame right: ", self.frame_right)
+        # print("frame left: ", self.frame_left)
+        # print("frame right: ", self.frame_right)
 
         # careful: this assumes that all classes you want to predict
         # are in thing classes (instead of stuff classes)

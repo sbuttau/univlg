@@ -8,7 +8,11 @@ import os
 import warnings
 from datetime import datetime
 from pathlib import Path
-
+# import debugpy
+# debugpy.listen(("0.0.0.0", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
+# print("Debugger attached!")
 import detectron2.utils.comm as comm
 import ipdb
 import matplotlib.colors as mcolors
@@ -434,7 +438,7 @@ def fwd(cfg, model):
         top_ids = torch.argsort(top_k_weighted_scores, descending=True)[:max_k]
         top_masks = masks[top_ids, :].cpu().numpy()
         top_bboxes = bboxes[top_ids, :].cpu().numpy()
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         visualize_pc_masks_and_bbox(
             pc=viz_pc.numpy(),
             color=(viz_color[i].cpu().numpy() * 255).astype(np.uint8),
