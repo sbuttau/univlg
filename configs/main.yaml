@@ -1,0 +1,132 @@
+OUTPUT_DIR: outputs/train/univlg
+
+# -----------------------------------------------------------------------------
+# DATASETS
+# -----------------------------------------------------------------------------
+DATASETS:
+  TRAIN: ("scanrefer_scannet_anchor_train_single",)
+  TEST: ("scanrefer_scannet_anchor_val_single_batched",)
+
+SCANNET_DATA_DIR: data/mask3d_processed/scannet/train_validation_database.yaml
+SCANNET200_DATA_DIR: data/mask3d_processed/scannet200/train_validation_database.yaml
+MATTERPORT_DATA_DIR: data/mask3d_processed/matterport/train_validation_database.yaml
+S3DIS_DATA_DIR: data/SEMSEG_100k/s3dis/train_validation_database.yaml
+
+# -----------------------------------------------------------------------------
+# DATALOADER
+# -----------------------------------------------------------------------------
+DATALOADER:
+  NUM_WORKERS: 16
+  TEST_NUM_WORKERS: 4
+
+# -----------------------------------------------------------------------------
+# SOLVER
+# -----------------------------------------------------------------------------
+SOLVER:
+  IMS_PER_BATCH: 4          # = NUM_GPUS * NUM_MACHINES * BS
+  IMS_PER_BATCH_2D: 4
+  IMS_PER_BATCH_3D: 1
+  BASE_LR: 1e-4
+  MAX_ITER: 200000
+  CHECKPOINT_PERIOD: 8000
+  TEST_IMS_PER_BATCH: 2
+  LR_SCHEDULER_NAME: WarmupCosineLR
+  WARMUP_ITERS: 1000
+
+# -----------------------------------------------------------------------------
+# INPUT
+# -----------------------------------------------------------------------------
+INPUT:
+  SAMPLING_FRAME_NUM: 15
+  FRAME_LEFT: 7
+  FRAME_RIGHT: 7
+  FRAME_LEFT_2D: 0
+  FRAME_RIGHT_2D: 0
+  SAMPLING_FRAME_NUM_2D: 1
+  IMAGE_SIZE: 448
+  MIN_SIZE_TEST: 448
+  MAX_SIZE_TEST: 448
+  SIZE_DIVISIBILITY: 14
+  RANDOM_FLIP: "none"
+
+  STRONG_AUGS: True
+  COLOR_AUG: False
+  CAMERA_DROP: False
+  AUGMENT_3D: True
+  SAMPLE_CHUNK_AUG: True
+  CHUNK_AUG_MAX: 5
+  VOXELIZE: True
+  INPAINT_DEPTH: True
+
+# -----------------------------------------------------------------------------
+# MODEL
+# -----------------------------------------------------------------------------
+MODEL:
+  WEIGHTS: ckpts/misc/m2f_coco_swin.pth
+  KNN: 8
+  SUPERVISE_SPARSE: False
+  FREEZE_BACKBONE: False
+  OPEN_VOCAB: True
+  CROSS_VIEW_CONTEXTUALIZE: True
+  CROSS_VIEW_BACKBONE: True
+  CROSS_VIEW_NUM_LAYERS: [2, 2, 6, 2]
+  DECODER_3D: True
+  MAX_SEQ_LEN: 520
+
+  PIXEL_MEAN: [0.0, 0.0, 0.0]
+  PIXEL_STD: [255.0, 255.0, 255.0]
+
+  SEM_SEG_HEAD:
+    NUM_CLASSES: 20
+
+  MASK_FORMER:
+    TRAIN_NUM_POINTS: 50000
+    DICE_WEIGHT: 6.0
+    MASK_WEIGHT: 15.0
+    BOX_WEIGHT: 3.0
+    GIOU_WEIGHT: 3.0
+    TEST:
+      SEMANTIC_ON: True
+
+# -----------------------------------------------------------------------------
+# MATCHING
+# -----------------------------------------------------------------------------
+MATCHING_CLASS_WEIGHT: 2.0
+MATCHING_MASK_WEIGHT: 0.2
+MATCHING_DICE_WEIGHT: 0.2
+MATCHING_BOX_WEIGHT: 0.1
+MATCHING_GIOU_WEIGHT: 0.1
+
+# -----------------------------------------------------------------------------
+# TRAINING FLAGS
+# -----------------------------------------------------------------------------
+TRAIN_3D: True
+TEST:
+  EVAL_3D: True
+  EVAL_PERIOD: 8000
+  EVAL_SPARSE: False
+
+USE_BOX_LOSS: True
+USE_GENERIC_DINO: True
+USE_CLIP_RELEVANT_FRAMES: True
+USE_CLIP_RELEVANT_FRAMES_CLIP_ONLY: True
+USE_GHOST_POINTS: True
+USE_SEGMENTS: True
+USE_NEW_EVAL_METRICS_FORMAT: True
+LOAD_SCANENTS: True
+VIL3D: True
+
+FORCE_VIT_XYZ_SCALE: True
+MULTIVIEW_XYZ_SCALES: [14, 14, 14, 14]
+
+TEXT_ENCODER_TYPE: "jina"
+DINO_VERSION: "dinov2_vitl14_reg"
+
+HIGH_RES_INPUT: True
+HIGH_RES_SUBSAMPLE: True
+FORCE_USE_REFERENTIAL_AUGS: True
+BYPASS_TARGET_ANCHOR_CHECK: True
+
+SAMPLING_FRACTION_RELEVANT_FRAMES: 0.5
+SAMPLING_REQUIRE_N_TARGET_FRAMES: 1
+MAX_FRAME_NUM: 450
