@@ -58,7 +58,7 @@ PRECOMPUTED_SCANNET_PATH = Path(os.getenv('PRECOMPUTED_SCANNET_PATH'))
 def get_scene_object_pixel_counts(scan_id: str):
     global scene_object_counts
     if scene_object_counts is None:
-        scene_object_counts = torch.load(PRECOMPUTED_SCANNET_PATH / 'scannet_object_id_frame_map.pth', weights_only=False)
+        scene_object_counts = torch.load(PRECOMPUTED_SCANNET_PATH / 'scannet_object_id_frame_map_fixed_.pth', weights_only=False)
     return scene_object_counts[scan_id]
 
 def furthest_point_sample(xyz, npoint, initial_centroids=None):

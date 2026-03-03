@@ -83,7 +83,7 @@ USE_SWIN=${USE_SWIN:-0}
 USE_DINO=${USE_DINO:-1}
 CKPT_PATH=${CKPT_PATH:-"${CKPTS_PATH}/misc/m2f_coco_swin.pth"}
 
-echo "BS: ${BS}, NUM_GPUS: ${NUM_GPUS}, SAMPLING_FRAME_NUM: ${SAMPLING_FRAME_NUM}, NUM_DATALOADERS: ${NUM_DATALOADERS}, VAL: ${NUM_VAL_DATALOADERS}, CKPT_PATH: ${CKPT_PATH}"
+echo "BS: ${BS}, NUM_GPUS: ${NUM_GPUS}, USE_SLURM: ${USE_SLURM}, NUM_NODES: ${NUM_MACHINES}, MASTER PORT: ${MASTER_PORT}, SAMPLING_FRAME_NUM: ${SAMPLING_FRAME_NUM}, NUM_DATALOADERS: ${NUM_DATALOADERS}, VAL: ${NUM_VAL_DATALOADERS}, CKPT_PATH: ${CKPT_PATH}"
 
 if [[ -f .env ]]; then
     source .env
@@ -161,9 +161,9 @@ else
 fi
 
 # Checks if CUDA is available on the node and if not, requeues job (if it detects we are inside a SLURM job).
-uv run univlg/slurm_requeue.py
+# uv run univlg/slurm_requeue.py
 
-$CMD $PYTHON_FILE --dist-url="tcp://127.0.0.1:$RANDOM" --num-gpus $NUM_GPUS --num-machines $NUM_MACHINES --config-file $CONFIG_FILE $EVAL_ARG $RESUME_ARG $SLURM_ARG \
+$CMD $PYTHON_FILE --dist-url="tcp://$MASTER_ADDR:$MASTER_PORT" --num-gpus $NUM_GPUS --num-machines $NUM_MACHINES --config-file $CONFIG_FILE $EVAL_ARG $RESUME_ARG $SLURM_ARG \
 OUTPUT_DIR $OUTPUT_DIR SOLVER.IMS_PER_BATCH $((NUM_GPUS * NUM_MACHINES * BS)) \
 SOLVER.CHECKPOINT_PERIOD $CHECKPOINT_PERIOD TEST.EVAL_PERIOD $EVAL_PERIOD \
 INPUT.FRAME_LEFT $SIDE_FRAMES INPUT.FRAME_RIGHT $SIDE_FRAMES INPUT.SAMPLING_FRAME_NUM $SAMPLING_FRAME_NUM \
@@ -217,8 +217,8 @@ USE_MASK_FEATURES_FOR_ATTN True \
 SAMPLING_FRACTION_RELEVANT_FRAMES 0.5 \
 ADD_DISTRACTOR_RELEVANT_FRAMES False \
 ADD_RELEVANT_OBJECTS True \
-DATASETS.TRAIN "('sr3d_ref_scannet_train_single','scanrefer_scannet_anchor_train_single','nr3d_ref_scannet_anchor_train_single','scannet200_context_instance_train_200cls_single_highres_100k',)" \
-DATASETS.TEST "('sr3d_ref_scannet_val_single_batched','scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','scannet200_context_instance_train_200cls_single_highres_100k',)" \
+DATASETS.TRAIN "('scanrefer_scannet_anchor_train_single',)" \
+DATASETS.TEST "('scanrefer_scannet_anchor_val_single_batched',)" \
 USE_WANDB_NAME_AS_ID False \
 SAMPLING_REQUIRE_N_TARGET_FRAMES 1 \
 SLURM_JOB_ID "\"${SLURM_JOB_ID:-}\"" \
