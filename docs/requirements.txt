@@ -48,3 +48,4 @@ pycocoevalcap>=1.2
 hf_transfer>=0.1.9
 albumentations>=2.0.4
 wandb~=0.19.7
+shapely==2.0.2

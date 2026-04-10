@@ -1,4 +1,11 @@
 # Where things are and how to find them
+# Container
+```bash
+export HOST_REPO="/mnt/projects/dm/warm_up/u0205/univlg"
+singularity exec --nv --bind "$HOST_REPO:/workspaces" "univlg.sif" bash
+source ~/.venvs/univlg/bin/activate
+export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/torch/lib:$LD_LIBRARY_PATH
+```
 
 ## Datasets and dataloaders
 dataset classes are in `univlg/data_video/dataset_mapper_language.py`

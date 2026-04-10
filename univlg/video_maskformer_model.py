@@ -884,9 +884,10 @@ class UniVLG(nn.Module):
         if self.cfg.SAVE_DATA_SAMPLE:
             # When we run eval, we batch by scene for efficiency and thus have images of [v, ...] whereas we normally have [(bs, v), ...]
             # For the standalone eval script, we just want [(bs, v), ...] to make things simpler.
-            
-            output_path = Path('ckpts') / 'misc' / 'data_sample.pth'
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path = Path('ckpts') / 'misc' / f'data_sample_{batched_inputs[0]["image_id"]}.pth'
+            # output_path.parent.mkdir(parents=True, exist_ok=True)
+            while output_path.exists():
+                output_path = output_path.parent / f'data_sample_{batched_inputs[0]["image_id"]}_{random.randint(0,10000)}.pth'
             torch.save({
                 'images_tensor': torch.cat([images.tensor for _ in range(bs)], dim=0),
                 'multiview_data': multiview_data_orig,
@@ -897,7 +898,7 @@ class UniVLG(nn.Module):
                 'max_valid_points': [targets[i]['max_valid_points'] for i in range(len(targets))] if self.cfg.USE_GHOST_POINTS and decoder_3d else None
             }, output_path)
             print(f"Saved data sample to {output_path}. Exiting...")
-            exit()
+            # exit()
 
         outputs = self.mask_decoder(
             mask_features,
