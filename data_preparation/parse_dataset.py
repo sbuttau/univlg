@@ -1,3 +1,4 @@
+import argparse
 import os
 import ast
 import json
@@ -66,6 +67,10 @@ def get_n_sentences_data(row, n):
     return pd.Series([new_description, new_tokens, str(new_entities)])
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Prepara dataset con diverse lunghezze di descrizione.")
+    parser.add_argument('--multiple', action='store_true', help="Se attivo, processa i campioni Multiple invece degli Unique.")
+    args = parser.parse_args()
+
     if not os.path.exists(DEF_ANNOTATION_FILE):
         print(f"Errore: File {DEF_ANNOTATION_FILE} non trovato.")
         exit()
@@ -76,18 +81,29 @@ if __name__ == "__main__":
     # Analisi unicità (Target Unique vs Multiple)
     scene_counts = get_scene_category_counts(df)
     df['is_unique'] = df.apply(lambda r: len(scene_counts[r['scan_id']].get(r['object_name'], [])) == 1, axis=1)
-    
+    df['is_multiple'] = df.apply(lambda r: len(scene_counts[r['scan_id']].get(r['object_name'], [])) > 1, axis=1)
+
     # Ci concentriamo sui campioni Unique (come nel tuo script precedente)
     df_unique = df[df['is_unique'] == True].copy()
+    df_multiple = df[df['is_multiple'] == True].copy()
     print(f"Campioni Unique: {len(df_unique)}")
+    print(f"Campioni Multiple: {len(df_multiple)}")
 
     # Conta frasi
     df_unique['num_sentences'] = df_unique['description'].apply(lambda x: len(sent_tokenize(str(x))))
-    
+    df_multiple['num_sentences'] = df_multiple['description'].apply(lambda x: len(sent_tokenize(str(x))))
+
     # Filtriamo i "Long Samples" (> 3 frasi)
     long_sent = df_unique[df_unique['num_sentences'] > 3].copy()
+    long_sent_multiple = df_multiple[df_multiple['num_sentences'] > 3].copy()
+
+    print(f"Campioni Unique con più di 3 frasi: {len(long_sent)}"
+          f"\nCampioni Multiple con più di 3 frasi: {len(long_sent_multiple)}")
     
     if not long_sent.empty:
+        if args.multiple:
+            long_sent = long_sent_multiple
+
         print(f"Elaborazione di {len(long_sent)} campioni lunghi...")
         base_name = DEF_ANNOTATION_FILE.split('/')[-1].replace('.csv', '')
 
@@ -100,10 +116,16 @@ if __name__ == "__main__":
                 df_v[['description', 'tokens', 'entities']] = df_v.apply(
                     lambda row: get_n_sentences_data(row, v), axis=1
                 )
-                suffix = f"long_v{v}_{v}sent"
+                if args.multiple:
+                    suffix = f"long_v{v}_{v}sent_multiple"
+                else:
+                    suffix = f"long_v{v}_{v}sent"
             else:
-                # v4 è l'originale completo
-                suffix = "long_v4_all"
+                if args.multiple:
+                    suffix = f"long_v{v}_all_multiple"
+                else:
+                    # v4 è l'originale completo
+                    suffix = "long_v4_all"
 
             output_path = f"data/refer_it_3d/{base_name}_{suffix}.csv"
             

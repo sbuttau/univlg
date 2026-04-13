@@ -79,3 +79,51 @@ Options for datasets are:
 - decoder: `VideoMultiScaleMaskedTransformerDecoder` (`univlg/modeling/transformer_decoder/video_mask2former_transformer_decoder.py`)
 - JINA text tokenizer: `univlg/data_video/dataset_mapper_language.py: 157
 - JINA text encoder:  `univlg/data_video/dataset_mapper_language.py: 65
+
+## Text length experiment
+Parse dataset:
+```bash
+python data_preparation/parse_dataset.py
+```
+
+it will divide descriptions by sentences and store respective files in the `data/` folder:
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent.csv`
+-`data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all.csv`
+
+Then, run eval for each split:
+
+
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+DATASETS.TEST "('scanrefer_scannet_val_sentence_test_one_batched',)" \ //<--- change this
+# SAVE_DATA_SAMPLE False \ <--- optional: don't need to save data path
+# DATA_SAMPLE_PATH ckpts/misc/long_sentence_test/one_sentence
+```
+
+You will find visualizations inside `outputs/visualizations` (ex. `outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched`).
+
+Next, build the html file index:
+```bash
+python make_scene_browser.py outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched
+```
+This will create a file `index.html` in the visualization folder.
+
+```bash
+cd outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched
+python -m http.server 6009 # or whichever port you prefer
+```
