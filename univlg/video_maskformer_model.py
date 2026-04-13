@@ -884,10 +884,15 @@ class UniVLG(nn.Module):
         if self.cfg.SAVE_DATA_SAMPLE:
             # When we run eval, we batch by scene for efficiency and thus have images of [v, ...] whereas we normally have [(bs, v), ...]
             # For the standalone eval script, we just want [(bs, v), ...] to make things simpler.
-            output_path = Path('ckpts') / 'misc' / f'data_sample_{batched_inputs[0]["image_id"]}.pth'
-            # output_path.parent.mkdir(parents=True, exist_ok=True)
+            root_path = Path(self.cfg.DATA_SAMPLE_PATH) if self.cfg.DATA_SAMPLE_PATH else Path("ckpts/misc")
+
+            image_id = batched_inputs[0]["image_id"]
+            output_path = root_path / f"data_sample_{image_id}.pth"
+
+            counter = 1
             while output_path.exists():
-                output_path = output_path.parent / f'data_sample_{batched_inputs[0]["image_id"]}_{random.randint(0,10000)}.pth'
+                output_path = root_path / f"data_sample_{image_id}_{counter}.pth"
+                counter += 1
             torch.save({
                 'images_tensor': torch.cat([images.tensor for _ in range(bs)], dim=0),
                 'multiview_data': multiview_data_orig,
@@ -928,7 +933,11 @@ class UniVLG(nn.Module):
             losses = self.criterion(
                 outputs, targets, decoder_3d=decoder_3d, actual_decoder_3d=actual_decoder_3d
             )
-
+            print("Loss_CE: ", losses.get('loss_ce', None))
+            print("Loss_Dice: ", losses.get('loss_dice', None))
+            print("Loss_3D_Box: ", losses.get('loss_bbox', None))
+            print("Loss_mask: ", losses.get('loss_mask', None))
+            print("Loss giou: ", losses.get('loss_giou', None))
             for k in list(losses.keys()):
                 if k in self.criterion.weight_dict:
                     losses[k] *= self.criterion.weight_dict[k]

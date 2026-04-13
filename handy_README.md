@@ -36,9 +36,8 @@ NOTE: model alone takes 2GB, running the code on 2 scenes takes ~25GB RAM, ~5GB 
 
 ```bash
 export CKPT_PATH="ckpts/univlg.pth"
-
-export SCANNET_DATA_DIR="/workspace/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
-export SCANNET_200_DATA_DIR="/workspace/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
 source scripts/setup.sh
 configure_local
 NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
@@ -47,12 +46,12 @@ TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
 SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
 SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
 VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-DATASETS.TRAIN "('scanrefer_scannet_anchor_train_single',)" \
-DATASETS.TEST "('scanrefer_scannet_anchor_val_single_batched',)" \
-SAVE_DATA_SAMPLE False
-# SAVE_DATA_SAMPLE True
+DATASETS.TEST "('scanrefer_scannet_val_sentence_test_one_batched',)" \
+SAVE_DATA_SAMPLE False \
+DATA_SAMPLE_PATH ckpts/misc/long_sentence_test/one_sentence
 ```
 TODO: need to check if RAM loading can be lightened
 
@@ -78,3 +77,5 @@ Options for datasets are:
 ## Model components
 - vision backbone (DINOv2): `UniVLGVisualBackbone` (`univlg/modeling/visual_backbone.py`)
 - decoder: `VideoMultiScaleMaskedTransformerDecoder` (`univlg/modeling/transformer_decoder/video_mask2former_transformer_decoder.py`)
+- JINA text tokenizer: `univlg/data_video/dataset_mapper_language.py: 157
+- JINA text encoder:  `univlg/data_video/dataset_mapper_language.py: 65

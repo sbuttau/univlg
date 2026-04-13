@@ -132,7 +132,13 @@ def visualize_pc_masks_and_bbox(
             [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
             visible=True
         )
-
+    # v.add_labels(
+    #             'Labels',
+    #             [sr3d_data['text_caption'], '',''],
+    #             [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
+    #             [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
+    #             visible=True
+    #         )
     if anchor_pcs is not None:
         anchor_colors = get_color(len(anchor_pcs))
         for i in range(0, min(len(gt_anchor_pcs), len(anchor_pcs))):
