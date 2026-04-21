@@ -167,6 +167,18 @@ def visualize_pc_masks_and_bbox(
     if not data_dir.exists():
         data_dir.parent.mkdir(parents=True, exist_ok=True)
     
+    # store caption
+    if sr3d_data is not None and 'text_caption' in sr3d_data:
+        caption_full = sr3d_data['text_caption']
+            
+        metadata = {
+            "caption": caption_full,
+            "target": sr3d_data.get('target_name', ''),
+            "anchors": sr3d_data.get('anchors_names', [])
+        }
+        with open(data_dir / "metadata.json", "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4)
+        print(f"saved metadata")
     print(f"Saved to {data_dir}")
     v.save(str(data_dir))
 
