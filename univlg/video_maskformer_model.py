@@ -17,7 +17,8 @@ from detectron2.structures import Boxes, ImageList, Instances
 from detectron2.utils.comm import get_world_size
 from univlg.data_video.sentence_utils import (
     convert_grounding_to_od_logits,
-    convert_grounding_to_od_logits_ref
+    convert_grounding_to_od_logits_ref,
+    convert_grounding_to_od_logits_ref_xai
 )
 from univlg.modeling.transformer_decoder.video_mask2former_transformer_decoder import (
     build_transformer_decoder,
@@ -444,6 +445,7 @@ class UniVLG(nn.Module):
         segments,
         scannet_all_masks_batched=None,
         actual_decoder_3d=True,
+        saliency_data=None
     ):
         processed_results = []
 
@@ -452,6 +454,21 @@ class UniVLG(nn.Module):
                 mask_pred_results.permute(0, 2, 1), segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
             ).permute(0, 2, 1)
 
+        if self.cfg.EXPLAINABLE and 'visual_grad' in saliency_data:
+            v_grad_tensor = torch.from_numpy(saliency_data['visual_grad']).to(mask_pred_results.device)
+            v_grad = v_grad_tensor.reshape(1, 1, -1) 
+            v_grad_source = voxel_map_to_source(
+                v_grad.permute(0, 2, 1), 
+                segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
+            ).permute(0, 2, 1)
+
+            # do the same for the target mask - this is temporary! debugging
+            target_mask_tensor = torch.from_numpy(saliency_data['target_mask']).to(mask_pred_results.device)
+            target_mask_source = voxel_map_to_source(
+                target_mask_tensor.reshape(1, 1, -1).permute(0, 2, 1), 
+                segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
+            ).permute(0, 2, 1)
+            
         pred_masks = mask_pred_results
         for i, pred_mask in enumerate(pred_masks):
             if self.cfg.USE_GT_MASKS and 'ref' in batched_inputs[i]['dataset_name']:
@@ -463,6 +480,19 @@ class UniVLG(nn.Module):
                 # remove padding
                 max_valid_point = scannet_gt_target_dicts[i]["max_valid_points"]
                 pred_mask = pred_mask[:, :max_valid_point]
+                
+                if self.cfg.EXPLAINABLE:
+                    v_grad = v_grad_source.squeeze(0).detach().cpu().numpy()
+                    p2v_cpu = scannet_p2v[i].cpu().numpy()
+                    v_grad = v_grad[:,p2v_cpu]
+                    v_grad = v_grad[:,:max_valid_point]
+                    saliency_data['visual_grad'] = v_grad    
+
+                    # target mask -debugging
+                    target_mask_source_squeezed = target_mask_source.squeeze(0).detach().cpu().numpy()
+                    target_mask_source_squeezed = target_mask_source_squeezed[:,p2v_cpu]
+                    target_mask_source_squeezed = target_mask_source_squeezed[:,:max_valid_point]
+                    saliency_data['target_mask'] = target_mask_source_squeezed  
 
             if self.cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
                 if 'ref' in batched_inputs[i]['dataset_name']:
@@ -492,7 +522,7 @@ class UniVLG(nn.Module):
                     mask_cls_results[i], pred_mask
                 )
                 processed_3d["semantic_3d"] = semantic_r
-
+            
             if self.cfg.MATTERPORT_ALL_CLASSES_TO_21:
                 matterport_all_classes_to_21 = torch.tensor(
                     list(MATTERPORT_ALL_CLASSES_TO_21.values()), device=pred_mask.device
@@ -524,6 +554,9 @@ class UniVLG(nn.Module):
                     index=i,
                     scannet_idxs=scannet_idxs[i] if len(scannet_idxs) > 0 else None,
                 )
+        if self.cfg.EXPLAINABLE:
+            processed_results[0]['saliency_data'] = saliency_data
+            del v_grad
         torch.cuda.empty_cache()
         return processed_results
 
@@ -876,9 +909,9 @@ class UniVLG(nn.Module):
         if self.cfg.USE_GHOST_POINTS and decoder_3d:
             scannet_pc_ = scatter_mean(scannet_pc, scannet_p2v, dim=1)
             scannet_p2v_ = (
-                torch.arange(scannet_pc.shape[1], device=scannet_pc.device)
+                torch.arange(scannet_pc_.shape[1], device=scannet_pc.device)
                 .unsqueeze(0)
-                .repeat(scannet_pc.shape[0], 1)
+                .repeat(scannet_pc_.shape[0], 1)
             )
 
         if self.cfg.SAVE_DATA_SAMPLE:
@@ -888,7 +921,7 @@ class UniVLG(nn.Module):
 
             image_id = batched_inputs[0]["image_id"]
             output_path = root_path / f"data_sample_{image_id}.pth"
-
+            
             counter = 1
             while output_path.exists():
                 output_path = root_path / f"data_sample_{image_id}_{counter}.pth"
@@ -904,21 +937,91 @@ class UniVLG(nn.Module):
             }, output_path)
             print(f"Saved data sample to {output_path}. Exiting...")
             # exit()
+        max_valid_points = scannet_pc_.shape[1] if (self.cfg.USE_GHOST_POINTS and decoder_3d) else None
 
-        outputs = self.mask_decoder(
-            mask_features,
-            shape=[bs, v],
-            mask_features_xyz=scannet_pc_,
-            mask_features_p2v=scannet_p2v_,
-            segments=scannet_segments_batched if self.cfg.USE_GHOST_POINTS else segments,
-            decoder_3d=decoder_3d,
-            captions=captions,
-            actual_decoder_3d=actual_decoder_3d,
-            scannet_all_masks_batched=scannet_all_masks_batched,
-            max_valid_points=[targets[i]['max_valid_points'] for i in range(len(targets))] if self.cfg.USE_GHOST_POINTS and decoder_3d else None,
-            tokenized_answer=padded_answers if (self.cfg.GENERATION and self.training) else None,
-            answers=answers if (self.cfg.GENERATION and self.training) else None,
-        )
+        if self.cfg.EXPLAINABLE:
+            with torch.enable_grad():
+                mask_features.requires_grad_(True) # XAI purposes, to allow gradients to flow back to the visual backbone when using ghost points and 3D decoder
+                outputs = self.mask_decoder(
+                    mask_features,
+                    shape=[bs, v],
+                    mask_features_xyz=scannet_pc_,
+                    mask_features_p2v=scannet_p2v_,
+                    segments=scannet_segments_batched if self.cfg.USE_GHOST_POINTS else segments,
+                    decoder_3d=decoder_3d,
+                    captions=captions,
+                    actual_decoder_3d=actual_decoder_3d,
+                    scannet_all_masks_batched=scannet_all_masks_batched,
+                    max_valid_points= max_valid_points,
+                    tokenized_answer=padded_answers if (self.cfg.GENERATION and self.training) else None,
+                    answers=answers if (self.cfg.GENERATION and self.training) else None,
+                )
+                top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
+                target_score = outputs["pred_logits"][0, top_query_idx, 0]
+                target_mask = outputs["pred_masks"][0, top_query_idx]
+
+                # Clear previous gradients and backpropagate from the filtered score
+                self.zero_grad()
+                target_score.backward(retain_graph=True)
+                # target_mask.sum().backward(retain_graph=True)
+                v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
+                v_grad = (v_grad * mask_features[0]).sum(0)
+                saliency_data = {
+                    # Visual importance: gradient of the score w.r.t input features
+                    "visual_grad": v_grad.cpu().detach().numpy(),
+                    # Token importance: gradient w.r.t text embeddings
+                    "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
+                    "target_mask": target_mask.cpu().detach().numpy()
+                }
+                
+                if not self.training and self.cfg.MODEL.OPEN_VOCAB:
+                    outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
+                    
+                    outputs["pred_logits"] = torch.cat(
+                        [
+                            convert_grounding_to_od_logits_ref_xai(
+                                logits=outputs["pred_logits"][i][None],
+                                num_class=num_classes + 1,
+                                positive_maps=targets[i]["positive_map"],
+                                reduce="mean",
+                            )                                
+                            for i in range(bs)
+                        ]
+                    )
+                    
+                # top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
+                # target_score = outputs["pred_logits"][0, top_query_idx, 0]
+                # target_mask = outputs["pred_masks"][0, top_query_idx]
+
+                # # Clear previous gradients and backpropagate from the filtered score
+                # self.zero_grad()
+                # target_score.backward(retain_graph=True)
+                # # target_mask.sum().backward(retain_graph=True)
+                # v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
+                # v_grad = (v_grad * mask_features[0]).sum(0)
+                # saliency_data = {
+                #     # Visual importance: gradient of the score w.r.t input features
+                #     "visual_grad": v_grad.cpu().detach().numpy(),
+                #     # Token importance: gradient w.r.t text embeddings
+                #     "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
+                #     "target_mask": target_mask.cpu().detach().numpy()
+                # }
+  
+        else:
+            outputs = self.mask_decoder(
+                mask_features,
+                shape=[bs, v],
+                mask_features_xyz=scannet_pc_,
+                mask_features_p2v=scannet_p2v_,
+                segments=scannet_segments_batched if self.cfg.USE_GHOST_POINTS else segments,
+                decoder_3d=decoder_3d,
+                captions=captions,
+                actual_decoder_3d=actual_decoder_3d,
+                scannet_all_masks_batched=scannet_all_masks_batched,
+                max_valid_points= max_valid_points,
+                tokenized_answer=padded_answers if (self.cfg.GENERATION and self.training) else None,
+                answers=answers if (self.cfg.GENERATION and self.training) else None,
+            )
 
         if outputs is None:
             return None
@@ -970,7 +1073,7 @@ class UniVLG(nn.Module):
                     [batched_input["num_classes"] for batched_input in batched_inputs]
                 )
 
-            if self.cfg.MODEL.OPEN_VOCAB:
+            if self.cfg.MODEL.OPEN_VOCAB and not self.cfg.EXPLAINABLE:
                 outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
                 reduce = "mean"
                 if 'sr3d_data' in batched_inputs[0]  or 'refcoco' in batched_inputs[0]['dataset_name']:
@@ -1014,9 +1117,11 @@ class UniVLG(nn.Module):
                     scannet_idxs,
                     scannet_segments_batched,
                     scannet_all_masks_batched,
+                    saliency_data=saliency_data if self.cfg.EXPLAINABLE else None
                 )
                 if generation_language is not None:
                     return generation_language, processed_results
+
                 return processed_results
 
             # Normal Processing
@@ -1034,6 +1139,7 @@ class UniVLG(nn.Module):
 
             if generation_language is not None:
                 return generation_language, processed_results
+            
             return processed_results
 
 
@@ -1147,7 +1253,7 @@ class UniVLG(nn.Module):
     def visualize_pred_on_scannet(
         self, input_per_image, processed_result,
         gt_targets, index, scannet_idxs=None,
-        fps_xyz=None
+        fps_xyz=None, threshold=0.5
     ):
         pc = input_per_image['scannet_coords'].cpu().numpy()
         if scannet_idxs is not None:
@@ -1159,20 +1265,16 @@ class UniVLG(nn.Module):
             color = color[scannet_idxs.cpu().numpy()]
 
         scene_name = input_per_image['file_name'].split('/')[-3]
-        pred_scores = processed_result["instances_3d"]['pred_scores']
-        pred_masks = processed_result["instances_3d"]['pred_masks']
-        pred_labels = processed_result["instances_3d"]['pred_classes']
-
-        # sort by scores in ascending order
-        sort_idx = torch.argsort(pred_scores)
-        pred_masks = pred_masks.permute(1, 0)[sort_idx].cpu().numpy()
-        pred_labels = pred_labels[sort_idx].cpu().numpy()
-
-        # threshold by scores > 0.5
-        pred_scores = pred_scores[sort_idx].cpu().numpy()
-        conf = pred_scores > 0.05
-        pred_masks = pred_masks[conf]
-        pred_labels = pred_labels[conf]
+        pred_scores = processed_result["instances_3d"]['pred_scores'][:, 0] # [q,c]
+        pred_masks = F.sigmoid(processed_result["instances_3d"]['pred_masks']) #[q,N]
+        pred_masks = pred_masks > threshold
+        
+        # Average confidence of each prediction mask.
+        top_k_weighted_scores = pred_scores
+        top_k_pred_masks = pred_masks.flatten(1)
+        max_k = 5 # take top 5 preds
+        sort_idx = torch.argsort(top_k_weighted_scores, descending=True)[:max_k]
+        top_masks = top_k_pred_masks[sort_idx, :].cpu().numpy()
 
         # whiteboard = pred_labels == 44
         # pred_masks = pred_masks[whiteboard]
@@ -1193,8 +1295,8 @@ class UniVLG(nn.Module):
         dataset_name = input_per_image['dataset_name']
 
         vis_utils.plot_3d_offline(
-            pc, color, masks=pred_masks, valids=valids,
-            labels=pred_labels,
+            pc, color, masks=top_masks, valids=valids,
+            labels=gt_labels, # should be pred labels but don't have them, just a quick fix
             gt_masks=gt_masks, gt_labels=gt_labels, scene_name=scene_name,
             data_dir=self.cfg.VISUALIZE_LOG_DIR,
             mask_classes=self.cfg.SKIP_CLASSES, dataset_name=dataset_name,

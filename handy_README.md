@@ -49,9 +49,8 @@ VISUALIZE_REF=True \
 VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-DATASETS.TEST "('scanrefer_scannet_val_sentence_test_one_batched',)" \
+DATASETS.TEST "('scanrefer_scannet_val_scene0329_debug_batched',)" \
 SAVE_DATA_SAMPLE False \
-DATA_SAMPLE_PATH ckpts/misc/long_sentence_test/one_sentence
 ```
 TODO: need to check if RAM loading can be lightened
 
@@ -60,9 +59,9 @@ Once the data is stored, you can run a standalone eval to visualize your results
 export CKPT_PATH="ckpts/univlg.pth"
 source scripts/setup.sh
 configure_local
-USE_STANDALONE=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+USE_STANDALONE=1 EXPLAINABLE=0 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 USE_AUTO_NOUN_DETECTION False \
-USE_SEGMENTS False
+USE_SEGMENTS False 
 ```
 it will save an output folder with the instructions to open the visualizer online (you should do `cd to your folder` and then `python -m http.server 6008` or to your favorite port).
 
@@ -114,7 +113,6 @@ DATASETS.TEST "('scanrefer_scannet_val_sentence_test_one_batched',)" \ //<--- ch
 # SAVE_DATA_SAMPLE False \ <--- optional: don't need to save data path
 # DATA_SAMPLE_PATH ckpts/misc/long_sentence_test/one_sentence
 ```
-
 You will find visualizations inside `outputs/visualizations` (ex. `outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched`).
 
 Next, build the html file index:
@@ -127,3 +125,52 @@ This will create a file `index.html` in the visualization folder.
 cd outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched
 python -m http.server 6009 # or whichever port you prefer
 ```
+
+## Saliency maps (negations)
+Extract one scene from the dataset using the script:
+
+```bash
+python tests/extract_one_scene.py --annotation_file data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_negations_only.py --scene_id scene0307_00
+```
+
+The file `data/refer_it_3d/scene0307_00_scanrefer_val.csv` will be stored. 
+
+Make sure you add the dataset with one sample in the registered datasets (in `univlg/data_video/datasets/load_sr3d.py`), and add it in the main.sh file. Run the inference on the sample to store the data sample and visualize the prediction:
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+EXPLAINABLE True
+SAVE_DATA_SAMPLE True \ 
+DATA_SAMPLE_PATH ckpts/misc/negations
+```
+
+To visualize BEV of the scene with multiple possible tokens to query,first run the standalone_eval_attention.py:
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+source scripts/setup.sh
+configure_local
+USE_STANDALONE=1 EXPLAINABLE=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+USE_AUTO_NOUN_DETECTION False \
+USE_SEGMENTS False 
+```
+
+This will save the pth of the scene like "/workspaces/univlg/outputs/scene_0_raw.pth".
+Then run the player2.py
+
+```bash
+streamlit run player2.py
+```
+
+(make sure the script is taking the correct file inside. it is hardcoded)

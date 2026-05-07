@@ -381,6 +381,15 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             text_feats, text_attn_mask = self.lang_encoder(
                 captions
             )  # B X S X C
+
+            # --- XAI ---
+            if getattr(self.cfg, "EXPLAINABLE", False):
+                # Rendiamo i text_feats capaci di accumulare gradienti
+                text_feats.requires_grad_(True)
+                text_feats.retain_grad()
+                # Salviamoli in self per poterli riprendere dopo la forward
+                self.text_embeddings = text_feats
+
             text_feats = text_feats.permute(1, 0, 2)  # S X B X C
 
             # add these text features as text queries
@@ -431,7 +440,6 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
         predictions_class.append(outputs_class)
         predictions_mask.append(outputs_mask)
-
         for i in range(self.num_layers):
             attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False
 
@@ -473,7 +481,6 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 pos=pos_attn,
                 query_pos=query_embed,
             )
-
             output = self.transformer_self_attention_layers[i](
                 output,
                 tgt_mask=None,
@@ -567,11 +574,11 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             ),
             "generation_logits": predictions_generation[-1] if self.cfg.GENERATION else None,
             'generation_language': generation_language if self.cfg.GENERATION else None,
+            'text_embeddings': self.text_embeddings if getattr(self.cfg, "EXPLAINABLE", False) else None,
         }
 
         if self.cfg.AR_LLM:
             out['generation_labels'] = generation_labels
-
         return out
     
     def forward_generation_head(self, generation_features, captions, answers):
@@ -698,11 +705,11 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
         outputs_class = self.open_vocab_class_pred(
             decoder_output, text_feats,
-        )
+        ) # MULTIMODAL MATCHING: each query is assigned a class based on cosine similarity!
 
         mask_embed = self.mask_embed(decoder_output)
 
-        segment_mask = torch.einsum("bqc,bcn->bqn", mask_embed, mask_features)
+        segment_mask = torch.einsum("bqc,bcn->bqn", mask_embed, mask_features) # -> which object does the query match?
         if self.cfg.USE_GT_MASKS:
             output_mask = voxel_map_to_source(
                 segment_mask.permute(0, 2, 1), scannet_all_masks_batched

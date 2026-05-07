@@ -69,11 +69,12 @@ CHECKPOINT_PERIOD=${CHECKPOINT_PERIOD:-8000}
 EVAL_PERIOD=${EVAL_PERIOD:-8000}
 IGNORERUN=${IGNORERUN:-0}
 NAME=${NAME:-"univlg"}
-NUM_DATALOADERS=${NUM_DATALOADERS:-16}
-NUM_VAL_DATALOADERS=${NUM_VAL_DATALOADERS:-4}
+NUM_DATALOADERS=0 #11 #${NUM_DATALOADERS:-16}
+NUM_VAL_DATALOADERS=0 #1 #${NUM_VAL_DATALOADERS:-4}
 NUM_MACHINES=${NUM_MACHINES:-1}
 BREAKPOINT_ON_ERROR=${BREAKPOINT_ON_ERROR:-False}
 USE_STANDALONE=${USE_STANDALONE:-0}
+EXPLAINABLE=${EXPLAINABLE:-0}
 export RETURN_SCENE_BATCH_SIZE=${RETURN_SCENE_BATCH_SIZE:-8}
 
 USE_SLURM=${USE_SLURM:-0}
@@ -155,7 +156,11 @@ fi
 
 if [[ "$USE_STANDALONE" -eq 1 ]]; then
     export PYTHONPATH="$PYTHONPATH:$PWD"
-    PYTHON_FILE="scripts/standalone_eval.py"
+    if [[ "$EXPLAINABLE" -eq 1 ]]; then
+        PYTHON_FILE="scripts/standalone_eval_attention.py"
+    else
+        PYTHON_FILE="scripts/standalone_eval.py"
+    fi
 else
     PYTHON_FILE="train.py"
 fi
@@ -197,7 +202,7 @@ INPUT.INPAINT_DEPTH True \
 IGNORE_DEPTH_MAX 15.0 \
 MODEL.SUPERVISE_SPARSE False \
 TEST.EVAL_SPARSE False \
-USE_WANDB True \
+USE_WANDB False \
 USE_GHOST_POINTS True \
 SCANNET_DATA_DIR $SCANNET_DATA_DIR \
 SCANNET200_DATA_DIR $SCANNET200_DATA_DIR \
@@ -217,8 +222,8 @@ USE_MASK_FEATURES_FOR_ATTN True \
 SAMPLING_FRACTION_RELEVANT_FRAMES 0.5 \
 ADD_DISTRACTOR_RELEVANT_FRAMES False \
 ADD_RELEVANT_OBJECTS True \
-DATASETS.TRAIN "('sr3d_ref_scannet_train_single','scanrefer_scannet_anchor_train_single','nr3d_ref_scannet_anchor_train_single','scannet200_context_instance_train_200cls_single_highres_100k',)" \
-DATASETS.TEST "('sr3d_ref_scannet_val_single_batched','scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','scannet200_context_instance_train_200cls_single_highres_100k',)" \
+DATASETS.TRAIN "('scanrefer_scannet_anchor_train_single',)" \
+DATASETS.TEST "('scanrefer_scannet_val_scene0307_debug_batched',)" \
 USE_WANDB_NAME_AS_ID False \
 SAMPLING_REQUIRE_N_TARGET_FRAMES 1 \
 SLURM_JOB_ID "\"${SLURM_JOB_ID:-}\"" \

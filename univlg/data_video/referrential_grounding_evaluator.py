@@ -43,7 +43,8 @@ def visualize_pc_masks_and_bbox(
     pred_pcs, gt_bbox, pred_bbox,
     data_dir=None, sample_name=None, inputs=None,
     gt_anchor_pcs=None, gt_anchor_bboxs=None, sr3d_data=None,
-    anchor_pcs=None, anchor_bboxs=None
+    anchor_pcs=None, anchor_bboxs=None, saliency_colors=None,
+    saliency_data=None
 ):
     """
     Input
@@ -62,6 +63,16 @@ def visualize_pc_masks_and_bbox(
                  visible=True,
                  point_size=25)
 
+    if saliency_colors is not None:
+        if saliency_colors.max() <= 1.0:
+            saliency_colors = (saliency_colors * 255).astype(np.uint8)
+            
+        v.add_points("Saliency Map", pc,
+                     colors=saliency_colors,
+                     alpha=0.9,
+                     visible=False, 
+                     point_size=30) 
+
      # add gt masks
     masks_colors = [np.tile(np.array([0, 255, 0])[None], (pc.shape[0], 1)) for pc in gt_pcs]
     v.add_points(
@@ -71,7 +82,13 @@ def visualize_pc_masks_and_bbox(
         visible=False,
         point_size=point_size
     )
+    mask_bool = (saliency_data['target_mask'] > 0.5).flatten()
+    mask_colors = np.full((pc.shape[0], 3), 50, dtype=np.uint8)
+    mask_colors[mask_bool] = [255, 0, 0]
 
+    v.add_points("Target Mask Check", pc, 
+             colors=mask_colors.astype(np.uint8),
+             visible=True)
     # add pred masks
     dists = knn_points(torch.from_numpy(pc[None]).cuda(), torch.from_numpy(pc[None]).cuda(), K=8)[0][0, :, 1:].mean(1)
     threshold = dists.mean() + 2 * dists.std()
@@ -164,8 +181,12 @@ def visualize_pc_masks_and_bbox(
         data_dir = os.environ['OUTPUT_DIR_PREFIX'] + '/debug/bdetr2_visualizations'
 
     data_dir = Path(f"{data_dir}/{inputs[0]['dataset_name']}/{sample_name.replace(' ', '_')[:100]}")
-    if not data_dir.exists():
-        data_dir.parent.mkdir(parents=True, exist_ok=True)
+    if data_dir is None:
+        data_dir = os.environ['OUTPUT_DIR_PREFIX'] + '/debug/bdetr2_visualizations'
+
+    data_dir = Path(f"{data_dir}/{inputs[0]['dataset_name']}/{sample_name.replace(' ', '_')[:100]}")
+    # if not data_dir.exists():
+    data_dir.mkdir(parents=True, exist_ok=True)
     
     # store caption
     if sr3d_data is not None and 'text_caption' in sr3d_data:
@@ -176,11 +197,11 @@ def visualize_pc_masks_and_bbox(
             "target": sr3d_data.get('target_name', ''),
             "anchors": sr3d_data.get('anchors_names', [])
         }
-        with open(data_dir / "metadata.json", "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=4)
-        print(f"saved metadata")
     print(f"Saved to {data_dir}")
     v.save(str(data_dir))
+    with open(data_dir / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4)
+    print(f"saved metadata")
 
 def get_color(max_value: int, colormap='spring'):
     colormap = plt.get_cmap('spring')  # Pink is 0, Yellow is 1
@@ -462,6 +483,26 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 raise e
 
         if self.cfg.VISUALIZE_REF:
+            if self.cfg.EXPLAINABLE:
+                import matplotlib.pyplot as plt
+                # normalize
+                v_grad = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
+                threshold = v_grad.mean()
+                v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
+                v_grad_log = np.log1p(v_grad_denoised)
+                v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
+                v_max = np.percentile(v_grad_log, 98)
+                v_grad_norm = np.clip((v_grad_log - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                # v_min = np.percentile(v_grad, 10)
+                # v_max = np.percentile(v_grad, 98)
+                # v_grad_norm = np.clip((v_grad - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                # v_grad_norm = (v_grad - v_grad.min()) / (v_grad.max() - v_grad.min() + 1e-8)
+
+                # colormap
+                cmap = plt.get_cmap('jet')
+                colors = cmap(v_grad_norm)[:, :3] # take rgb only
+                colors = (colors * 255).astype(np.uint8)
+
             gt_anchor_bboxs = None
             gt_anchor_pcs = None
             anchor_pcs = None
@@ -504,7 +545,9 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 gt_anchor_bboxs=gt_anchor_bboxs,
                 sr3d_data=inputs[0]['sr3d_data'][0],
                 anchor_pcs=anchor_pcs,
-                anchor_bboxs=anchor_bboxs
+                anchor_bboxs=anchor_bboxs,
+                saliency_colors=colors,
+                saliency_data=outputs[0]['saliency_data'] if self.cfg.EXPLAINABLE else None
             )
 
         self.detection_results.append(detected)

@@ -47,6 +47,9 @@ _PREDEFINED_SPLITS_REF = {
     "scanrefer_scannet_val_sentence_test_two_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent_multiple.csv"),
     "scanrefer_scannet_val_sentence_test_three_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent_multiple.csv"),
     "scanrefer_scannet_val_sentence_test_all_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all_multiple.csv"),
+    # ONE SCENE DEBUG
+    "scanrefer_scannet_val_scene0329_debug" : ("scene00329_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0307_debug" : ("scene0307_00_scanrefer_val.csv"),
 
     'scanqa_ref_scannet_train_single': ('ScanQA_v1.0_train.json'),
     'scanqa_ref_scannet_val_single': ('ScanQA_v1.0_val.json'),

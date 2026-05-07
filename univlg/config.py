@@ -321,7 +321,7 @@ def add_maskformer2_video_config(cfg):
     cfg.MATCHING_MASK_WEIGHT = None
     cfg.MATCHING_DICE_WEIGHT = None
     cfg.VIS_LANG_ATTN = False
-    cfg.VISUALIZE_REF = False
+    cfg.VISUALIZE_REF = True
     cfg.FORCE_SUBSAMPLE = False
     cfg.USE_MASK_FEATURES_FOR_ATTN = False
     cfg.LOAD_SCANENTS = False
@@ -345,7 +345,7 @@ def add_maskformer2_video_config(cfg):
     cfg.FORCE_USE_DETECTION_AUGS = False
     cfg.BYPASS_TARGET_ANCHOR_CHECK = False
     cfg.SAMPLING_MAX_FRAMES_PER_RELEVANT_ID = None
-    cfg.VIZ_EXTRA_REF = False
+    cfg.VIZ_EXTRA_REF = True
     cfg.USE_CLIP_RELEVANT_FRAMES = False
     cfg.FORCE_FULL_RANDOM_RELEVANT_FRAMES = False
     cfg.USE_CLIP_RELEVANT_FRAMES_CLIP_ONLY = False
@@ -424,3 +424,5 @@ def add_maskformer2_video_config(cfg):
     cfg.AR_EMBED = False
     cfg.AR_INSTRUCT = False
     cfg.SAVE_DATA_SAMPLE = False
+    cfg.DATA_SAMPLE_PATH = None
+    cfg.EXPLAINABLE = False
