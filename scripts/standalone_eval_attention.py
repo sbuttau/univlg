@@ -39,7 +39,8 @@ from univlg.data_video.sentence_utils import convert_grounding_to_od_logits_ref
 from univlg.modeling.backproject.backproject import multiscsale_voxelize
 from univlg.utils.decoupled_utils import breakpoint_on_error
 from univlg.utils.misc import nanmax, nanmin
-
+import matplotlib.pyplot as plt
+import re
 warnings.filterwarnings("ignore")
 
 st = ipdb.set_trace
@@ -91,6 +92,7 @@ def get_color(max_value: int, colormap='spring'):
     colors = [mcolors.to_rgb(colormap(i / max_value)) for i in range(max_value)]  # Generate colors
     return (np.array(colors) * 255).astype(int).tolist()
 
+
 def get_color_preds(max_value: int, colormap='ignored'):
     """
     Returns a list of RGB colors where the first color is red and 
@@ -119,7 +121,8 @@ def box_xyzxyz_to_cxcyczwhd(x):
     return torch.stack([x_c, y_c, z_c, w, h, d], dim=-1)
 
 def visualize_pc_masks_and_bbox(
-    pc, color, captions=None, pred_bboxs=None, pred_masks=None, mask_pc=None, data_dir=None,
+    pc, color, captions=None, pred_bboxs=None, pred_masks=None, 
+    mask_pc=None, data_dir=None, current_token="", rank_idx=None
 ):
     """
     Visualize a point cloud and its predicted bounding box.
@@ -134,7 +137,6 @@ def visualize_pc_masks_and_bbox(
       sample_name: (optional) Name of the sample (used to structure the output directory).
       inputs: (optional) List of dictionaries containing metadata (e.g., 'dataset_name').
     """
-    # pred_colors = get_color(len(pred_bboxs))
     pred_colors = get_color_preds(len(pred_bboxs))
     point_size = 25
 
@@ -147,7 +149,14 @@ def visualize_pc_masks_and_bbox(
         [np.array([255.0, 0.0, 0.0])],
         visible=True
     )
-
+    z_max = pc[:, 2].max() + 1.0
+    v.add_labels(
+        'Token_Info',
+        [f"TOKEN: {current_token}"],
+        [np.array([0, 0, z_max])],
+        [np.array([255, 255, 255])], # Bianco
+        visible=True
+    )
     # Convert predicted bounding box to center-size format and add to visualization
     if pred_bboxs is not None:
         pred_bboxs = torch.from_numpy(pred_bboxs) if isinstance(pred_bboxs, np.ndarray) else pred_bboxs
@@ -160,10 +169,10 @@ def visualize_pc_masks_and_bbox(
                 size=pred_bboxs[..., 3:][i],
                 color=np.array(pred_colors[i]),
                 alpha=0.8,
-                visible=True,
+                visible=(i == 0), 
                 edge_width=0.03
             )
-
+           
     if pred_masks is not None:
         for i in range(pred_masks.shape[0]):
             if mask_pc[pred_masks[i]].shape[0] == 0:
@@ -269,6 +278,25 @@ def get_pred_logits(cfg, lang_data, outputs):
     outputs["pred_scores"] = outputs["pred_logits"]
     return outputs
 
+# Function to split text into logical blocks (Keep it simple and robust)
+def get_logical_chunks(text):
+    # We split before keywords to keep them in the chunk they describe
+    markers = ["with", "it does not", "it doesn't", "near", "on it", "and"]
+    pattern = "|".join([f"(?={re.escape(m)})" for m in markers])
+    chunks = [c.strip() for c in re.split(pattern, text, flags=re.IGNORECASE) if c.strip()]
+    return chunks
+
+# Function to map chunk words to model token indices
+def get_chunk_indices(chunk_text, tokens_human):
+    clean_chunk = chunk_text.lower().split()
+    indices = []
+    for i, t in enumerate(tokens_human):
+        # Remove the RoBERTa/GPT 'Ġ' symbol and spaces
+        clean_t = t.replace('Ġ', '').strip().lower()
+        if clean_t in clean_chunk and clean_t != '':
+            indices.append(i)
+    return indices
+
 def get_pred_boxes(outputs, scannet_pc, max_valid_points):
     masks = outputs['pred_masks'] > 0
 
@@ -347,7 +375,7 @@ def get_dummy_data(cfg, device):
     return images_tensor, multiview_data, scannet_pc, scannet_p2v, captions, max_valid_points, shape
 
 def get_saved_data(cfg):
-    output_path = Path('ckpts') / 'misc' / 'negations' /'data_sample_scene0307_00.pth'
+    output_path = Path('ckpts') / 'misc' / 'negations' /'data_sample_scene0329_00.pth'
     data = torch.load(output_path)
     images_tensor = data["images_tensor"]
     multiview_data = data["multiview_data"]
@@ -358,7 +386,6 @@ def get_saved_data(cfg):
     shape = data["shape"]
     
     return images_tensor, multiview_data, scannet_pc, scannet_p2v, captions, max_valid_points, shape
-
 @torch.inference_mode()
 def fwd(cfg, model):
     use_data = True
@@ -366,107 +393,158 @@ def fwd(cfg, model):
     device = next(model.parameters()).device
     max_bs = 4
     
-    images_tensor, multiview_data, scannet_pc, scannet_p2v, captions, max_valid_points, shape = get_saved_data(cfg) if use_data else get_dummy_data(cfg, device)
+    # 1. Caricamento Dati
+    images_tensor, multiview_data, scannet_pc, scannet_p2v, captions, max_valid_points, shape = \
+        get_saved_data(cfg) if use_data else get_dummy_data(cfg, device)
     bs, v, H_padded, W_padded = shape
 
     if max_bs is not None and max_bs < bs:
-        images_tensor = rearrange(rearrange(images_tensor, '(bs v) ... -> bs v ...', bs=bs)[:max_bs], 'bs v ... -> (bs v) ...')
-        for k in multiview_data.keys():
-            for i in range(len(multiview_data[k])):
-                multiview_data[k][i] = multiview_data[k][i][:max_bs]
-
-        scannet_pc = scannet_pc[:max_bs]
-        scannet_p2v = scannet_p2v[:max_bs]
-        captions = captions[:max_bs]
-        max_valid_points = max_valid_points[:max_bs]
         bs = max_bs
     
-    
-    # Get multi_scale data from multiview_data
     multi_scale_xyz = multiview_data["multi_scale_xyz"]
     multi_scale_p2v = multiview_data["multi_scale_p2v"]
-
     tokenizer = model.mask_decoder.lang_encoder.tokenizer
-    lang_data = []
     
-    # To automatically find the root noun, set each element to None. Alternatively, specify the target string for each element.
-    target_strs = [None] * bs
+    # 2. Processamento Linguistico
+    lang_data = []
     for i in range(bs):
-        if target_strs[i] is not None: assert target_strs[i] in captions[i]
         _dataset_dict = {
-            "utterance": captions[i], "target_str": target_strs[i], "target_id": -1, "anchor_ids": [], "anchors_types": [],
+            "utterance": captions[i], "target_str": None, "target_id": -1, "anchor_ids": [], "anchors_types": [],
         }
         lang_data.append(process_lang_data(cfg, tokenizer, _dataset_dict))
 
-    mask_features, multi_scale_features = model.visual_backbone(
-        images=images_tensor, # torch.Size([30, 3, 448, 448])
-        multi_scale_xyz=multi_scale_xyz, # [torch.Size([2, 15, 32, 32, 3]), ...]
-        multi_scale_p2v=multi_scale_p2v, # [torch.Size([2, 15360]), ...]
+    # 3. Forward Pass Modello
+    mask_features, _ = model.visual_backbone(
+        images=images_tensor,
+        multi_scale_xyz=multi_scale_xyz,
+        multi_scale_p2v=multi_scale_p2v,
         shape=[bs, v, H_padded, W_padded],
         decoder_3d=True,
         actual_decoder_3d=True,
-        mesh_pc=scannet_pc, # torch.Size([2, 38882, 3])
-        mesh_p2v=scannet_p2v # torch.Size([2, 38882])
+        mesh_pc=scannet_pc,
+        mesh_p2v=scannet_p2v
     )
 
-    scannet_pc_ = scatter_mean(scannet_pc, scannet_p2v, dim=1)
-    scannet_p2v_ = (
-        torch.arange(scannet_pc_.shape[1], device=scannet_pc.device)
-        .unsqueeze(0)
-        .repeat(scannet_pc_.shape[0], 1)
-    )
-    max_valid_points_voxel = [scannet_pc_.shape[1]] * bs
+    scannet_pc_mean = scatter_mean(scannet_pc, scannet_p2v, dim=1)
+    scannet_p2v_indices = torch.arange(scannet_pc_mean.shape[1], device=scannet_pc.device).unsqueeze(0).repeat(bs, 1)
+
     outputs = model.mask_decoder(
-        mask_features, # torch.Size([2, 256, 38882, 1])
+        mask_features,
         shape=[bs, v],
-        mask_features_xyz=scannet_pc_,
-        mask_features_p2v=scannet_p2v_,
-        segments=None,
+        mask_features_xyz=scannet_pc_mean,
+        mask_features_p2v=scannet_p2v_indices,
         decoder_3d=True,
         captions=captions,
         actual_decoder_3d=True,
-        scannet_all_masks_batched=None,
-        max_valid_points=max_valid_points_voxel,
-        tokenized_answer=None,
+        max_valid_points=max_valid_points,
     )
 
-    outputs = get_pred_boxes(outputs, scannet_pc_, max_valid_points_voxel)
+    outputs = get_pred_boxes(outputs, scannet_pc_mean, max_valid_points)
     outputs = get_pred_logits(cfg, lang_data, outputs)
+    scores = outputs['pred_scores'][:, :, 0] 
 
-    assert outputs['pred_scores'].ndim == 3 # (bs, queries, num_classes + 1)
-    scores = outputs['pred_scores'][:, :, 0] # Get the root noun (always first)
-    downsampmed_images_tensor = F.interpolate(images_tensor, size=(24, 32), mode='bilinear', align_corners=False)
-    viz_color = rearrange(downsampmed_images_tensor, "(bs v) c h w -> bs (v h w) c", bs=bs, v=v)
-    
+# --- NUOVA LOGICA: SALVATAGGIO DATI GREZZI PER ESPLORAZIONE ---
+    img_rgb_flat = rearrange(images_tensor, "(bs v) c h w -> bs (v h w) c", bs=bs, v=v)
+    viz_color_all = scatter_mean(img_rgb_flat[:, :scannet_p2v.shape[1], :], scannet_p2v, dim=1)
+
     for i in range(bs):
-        viz_pc = rearrange(multi_scale_xyz[-1][[i]], "b v h w c -> (b v h w) c").cpu()
-        assert multi_scale_xyz[-1][[i]].shape[2:4] == (24, 32)
+        # Prendiamo TUTTI i token, inclusi quelli speciali (utili per il debug)
+        tokenized_ids = lang_data[i]["tokenized"]["input_ids"][0]
+        tokens_human = tokenizer.convert_ids_to_tokens(tokenized_ids)
+        
+        layer_to_viz = -1 
+        # Estraiamo i tensori core (logits e maschere)
+        aux_logits = outputs['aux_outputs'][layer_to_viz]['pred_logits'][i] # [NumQueries, NumTokens]
+        aux_masks = outputs['aux_outputs'][layer_to_viz]['pred_masks'][i].sigmoid() # [NumQueries, NumPoints]
 
-        pred_mask = outputs['pred_masks'][i]
-        pred_mask = pred_mask[:, scannet_p2v_[i]]
-        # remove padding
-        max_valid_point = max_valid_points_voxel[i]
-        pred_mask = pred_mask[:, :max_valid_point]
-        masks = F.sigmoid(pred_mask) > 0.5
+        scene_data = {
+            "pc": scannet_pc_mean[i].cpu().numpy(),
+            "color": (viz_color_all[i].cpu().numpy() * 255).astype(np.uint8),
+            "full_caption": captions[i],
+            "tokens_human": tokens_human,
+            # Salviamo i logit e le maschere grezze
+            "raw_logits": aux_logits.cpu().numpy(), 
+            "raw_masks": aux_masks.cpu().numpy(),
+            "bboxes": box_xyzxyz_to_cxcyczwhd(outputs["pred_boxes"][i]).cpu().numpy()
+        }
+
+        # Salviamo un unico file pesante che contiene tutto il potenziale analitico
+        output_file = f"outputs/scene_{i}_raw.pth"
+        torch.save(scene_data, output_file)
+        print(f"   [OK] Dati grezzi salvati in: {output_file}")
         
-        bboxes = outputs["pred_boxes"][i]
+        # Salviamo il file nella cartella outputs
+        # output_file = f"outputs/scene_{i}_data.pth"
+        # torch.save(scene_data, output_file)
+        # print(f"File salvato: {output_file}")
+ 
+
+# # --- UNIFIED VISUALIZATION LOOP ---
+#     # Pool RGB colors to match the point cloud points (solves the RuntimeError)
+#     img_rgb_flat = rearrange(images_tensor, "(bs v) c h w -> bs (v h w) c", bs=bs, v=v)
+#     viz_color_all = scatter_mean(img_rgb_flat[:, :scannet_p2v.shape[1], :], scannet_p2v, dim=1)
+
+#     for i in range(bs):
+#         # 1. Initialize ONE visualizer for the entire scene
+#         v_all = viz.Visualizer()
         
-        # Average confidence of each prediction mask.
-        top_k_weighted_scores = scores[i]
-        max_k = 3
-        top_ids = torch.argsort(top_k_weighted_scores, descending=True)[:max_k]
-        top_masks = masks[top_ids, :].cpu().numpy()
-        top_bboxes = bboxes[top_ids, :].cpu().numpy()
-        # import pdb; pdb.set_trace()
-        visualize_pc_masks_and_bbox(
-            pc=viz_pc.numpy(),
-            color=(viz_color[i].cpu().numpy() * 255).astype(np.uint8),
-            captions=captions[i],
-            pred_bboxs=top_bboxes,
-            pred_masks=top_masks,
-            mask_pc=scannet_pc_[i].cpu().numpy(),
-            data_dir='outputs',
-        )
+#         # 2. Add the base Room (low alpha so heatmaps are visible)
+#         v_all.add_points("00_Base_RGB_Scene", scannet_pc_mean[i].cpu().numpy(), 
+#                          colors=(viz_color_all[i].cpu().numpy() * 255).astype(np.uint8), 
+#                          alpha=0.2, visible=True, point_size=25)
+
+#         tokenized_ids = lang_data[i]["tokenized"]["input_ids"][0]
+#         tokens_human = tokenizer.convert_ids_to_tokens(tokenized_ids)
+        
+#         layer_to_viz = -1 
+#         aux_logits = outputs['aux_outputs'][layer_to_viz]['pred_logits'][i]
+#         aux_masks = outputs['aux_outputs'][layer_to_viz]['pred_masks'][i].sigmoid()
+
+#         print(f"\n>>> Generating unified view for: '{captions[i]}'")
+
+#         # 3. Add each word as a toggleable Layer
+#         for t_idx, t_name in enumerate(tokens_human):
+#             clean_token = t_name.replace('Ġ', '').replace(' ', '')
+#             if clean_token in ['<s>', '</s>', '<pad>', '[CLS]', '[SEP]', '.', '?', '!']:
+#                 continue
+
+#             if t_idx < aux_logits.shape[1]:
+#                 query_scores = aux_logits[:, t_idx].sigmoid()
+#                 weighted_attn = (aux_masks * query_scores.unsqueeze(-1)).sum(dim=0).cpu().numpy()
+                
+#                 # Normalize heatmap
+#                 attn_norm = (weighted_attn - weighted_attn.min()) / (weighted_attn.max() - weighted_attn.min() + 1e-8)
+#                 colors_heatmap = (plt.get_cmap('jet')(attn_norm)[:, :3] * 255).astype(np.uint8)
+
+#                 # Add token layer (hidden by default)
+#                 v_all.add_points(f"Token_{t_idx:02d}_{clean_token}", 
+#                                  scannet_pc_mean[i].cpu().numpy(), 
+#                                  colors=colors_heatmap,
+#                                  visible=False,
+#                                  point_size=25)
+
+#         # 4. Add Bounding Boxes (Final Model Decisions)
+#         max_k = 3
+#         top_ids = torch.argsort(scores[i], descending=True)[:max_k]
+#         top_bboxes_raw = outputs["pred_boxes"][i][top_ids]
+#         top_bboxes_viz = box_xyzxyz_to_cxcyczwhd(top_bboxes_raw).cpu().numpy()
+#         pred_colors = get_color(max_k)
+
+#         for b_idx in range(max_k):
+#             v_all.add_bounding_box(
+#                 f"Pred_Rank_{b_idx}",
+#                 position=top_bboxes_viz[b_idx, :3],
+#                 size=top_bboxes_viz[b_idx, 3:],
+#                 color=np.array(pred_colors[b_idx]),
+#                 alpha=0.8,
+#                 visible=True
+#             )
+
+#         # 5. Save the unified folder
+#         save_dir = Path("outputs") / f"unified_scene_{i}_{datetime.now().strftime('%H%M%S')}"
+#         save_dir.mkdir(parents=True, exist_ok=True)
+#         v_all.save(str(save_dir))
+#         print(f"Done! Open the index.html in: {save_dir}")
 
 
 def build_model(cfg):

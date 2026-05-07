@@ -196,3 +196,8 @@ pytorch3d/
 
 # container
 *.sif
+
+# images
+*.png
+
+*.lock
