@@ -18,6 +18,8 @@ wandb/
 # Slurm
 slurm*.err
 slurm*.out
+*.sh
+*.slurm
 
 # Assets
 **.mp4
@@ -32,7 +34,7 @@ __pycache__/
 
 # Habitat scene files
 *.json.gz
-
+*.tar.gz
 # C extensions
 *.so
 
@@ -177,7 +179,7 @@ dataset_stats/
 
 # log file
 logs/*
-
+**/logs/*
 
 *.DS_Store
 
@@ -191,3 +193,11 @@ ignore/
 data/
 .env
 pytorch3d/
+
+# container
+*.sif
+
+# images
+*.png
+
+*.lock

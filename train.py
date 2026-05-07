@@ -916,6 +916,7 @@ def slurm_launch(
         timeout (timedelta): timeout of the distributed workers
         args (tuple): arguments passed to main_func
     """
+    print(f"Inizio train.py")
     print(f"Launcher got args: {num_gpus_per_machine=}, {num_machines=}, {machine_rank=}, {dist_url=}, {port=}, {backend=}, {cfg=}, {timeout=}, {one_process_per_gpu=}")
     logger = logging.getLogger(__name__)
     if mp.get_start_method(allow_none=True) is None:

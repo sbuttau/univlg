@@ -86,9 +86,6 @@ for scene in tqdm(os.listdir(FRAME_DIR)):
     if scene_id not in data:
         continue
 
-    if scene_id != '0309_01':
-        continue
-
     # load labels from data
     # import pdb; pdb.set_trace()
     full_path = Path(data[scene_id]['filepath'])
@@ -151,10 +148,10 @@ for scene in tqdm(os.listdir(FRAME_DIR)):
         indices = indices[sorting_indices]
         object_frame_map[val.item()] = torch.stack([indices, counts])
 
-    scene_object_frame_map[scene] = object_frame_map
+    scene_object_frame_map[scene_id] = object_frame_map
     print(f'Processed {scene}')
 
-output_file = REF_DATASET / 'scannet_object_id_frame_map_fixed.pth'
+output_file = REF_DATASET / 'scannet_object_id_frame_map_fixed_prova.pth'
 torch.save(scene_object_frame_map, output_file)
 print(f"Saved to {output_file}")
 

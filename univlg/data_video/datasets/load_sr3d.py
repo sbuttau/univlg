@@ -36,6 +36,17 @@ _PREDEFINED_SPLITS_REF = {
     "scanrefer_scannet_anchor_train_eval_single": ("ScanRefer_filtered_train_ScanEnts3D_train_eval.csv"),
     "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
     "scanrefer_scannet_test_single": ("ScanRefer_filtered_test.csv"),
+    # TESTING DIFFERENT SENTENCE LENGTHS
+    # unique
+    "scanrefer_scannet_val_sentence_test_one" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent.csv"),
+    "scanrefer_scannet_val_sentence_test_two" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv"),
+    "scanrefer_scannet_val_sentence_test_three" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent.csv"),
+    "scanrefer_scannet_val_sentence_test_all" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all.csv"),
+    # multiple
+    "scanrefer_scannet_val_sentence_test_one_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_two_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_three_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_all_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all_multiple.csv"),
 
     'scanqa_ref_scannet_train_single': ('ScanQA_v1.0_train.json'),
     'scanqa_ref_scannet_val_single': ('ScanQA_v1.0_val.json'),
