@@ -82,13 +82,13 @@ def visualize_pc_masks_and_bbox(
         visible=False,
         point_size=point_size
     )
-    mask_bool = (saliency_data['target_mask'] > 0.5).flatten()
-    mask_colors = np.full((pc.shape[0], 3), 50, dtype=np.uint8)
-    mask_colors[mask_bool] = [255, 0, 0]
+    # mask_bool = (saliency_data['target_mask'] > 0.5).flatten()
+    # mask_colors = np.full((pc.shape[0], 3), 50, dtype=np.uint8)
+    # mask_colors[mask_bool] = [255, 0, 0]
 
-    v.add_points("Target Mask Check", pc, 
-             colors=mask_colors.astype(np.uint8),
-             visible=True)
+    # v.add_points("Target Mask Check", pc, 
+    #          colors=mask_colors.astype(np.uint8),
+    #          visible=True)
     # add pred masks
     dists = knn_points(torch.from_numpy(pc[None]).cuda(), torch.from_numpy(pc[None]).cuda(), K=8)[0][0, :, 1:].mean(1)
     threshold = dists.mean() + 2 * dists.std()
@@ -483,7 +483,7 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 raise e
 
         if self.cfg.VISUALIZE_REF:
-            if self.cfg.EXPLAINABLE:
+            if self.cfg.EXPLAINABLE and self.cfg.GRADCAM:
                 import matplotlib.pyplot as plt
                 # normalize
                 v_grad = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
@@ -531,6 +531,24 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                         anchor_bboxs.append(np.expand_dims(_set_axis_align_bbox(anchor_pc), axis=0))
 
             scene_name = inputs[0]['file_name'].split('/')[-3] + " " + inputs[0]['sr3d_data'][0]['text_caption']
+            
+            scene_data = {
+                    "pc": inputs[0]['scannet_coords'].cpu().numpy(),           # [N, 3] per la BEV e 3D
+                    "color": inputs[0]['scannet_color'].cpu().numpy(),         # [N, 3] per il background
+                    "full_caption": inputs[0]['sr3d_data'][0]['text_caption'],
+                    "tokens": outputs[0]['saliency_data']['tokenized_text'],       # Lista di parole per il player
+                    "attn_matrix": outputs[0]['saliency_data']['attn_weights_source'], 
+                    "visual_grad": outputs[0]['saliency_data']['visual_grad'].cpu().numpy() if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None, # Il gradiente attuale
+                    "gt_mask": full_gt_mask,                                   # Per vedere dove "dovrebbe" guardare
+                    "target_id": target_id,
+                    "pred_masks_logits": outputs[0]['instances_3d']['pred_masks'].cpu().numpy(), # I logit dei pred mask prima della soglia
+                    "pred_scores": outputs[0]['instances_3d']['pred_scores'].cpu().numpy(), # I punteggi di confidenza per ogni pred mask
+                }
+            import os
+            os.makedirs("outputs/investigation", exist_ok=True)
+            output_file = f"outputs/investigation/scene_{inputs[0]['image_id']}_data.pth"
+            torch.save(scene_data, output_file)
+        
             visualize_pc_masks_and_bbox(
                 pc=inputs[0]['scannet_coords'].numpy(),
                 color=inputs[0]['scannet_color'].numpy(),
@@ -546,8 +564,8 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 sr3d_data=inputs[0]['sr3d_data'][0],
                 anchor_pcs=anchor_pcs,
                 anchor_bboxs=anchor_bboxs,
-                saliency_colors=colors,
-                saliency_data=outputs[0]['saliency_data'] if self.cfg.EXPLAINABLE else None
+                saliency_colors=colors if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None,
+                saliency_data=outputs[0]['saliency_data'] if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None
             )
 
         self.detection_results.append(detected)

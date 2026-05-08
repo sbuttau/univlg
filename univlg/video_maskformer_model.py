@@ -454,20 +454,32 @@ class UniVLG(nn.Module):
                 mask_pred_results.permute(0, 2, 1), segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
             ).permute(0, 2, 1)
 
-        if self.cfg.EXPLAINABLE and 'visual_grad' in saliency_data:
-            v_grad_tensor = torch.from_numpy(saliency_data['visual_grad']).to(mask_pred_results.device)
-            v_grad = v_grad_tensor.reshape(1, 1, -1) 
-            v_grad_source = voxel_map_to_source(
-                v_grad.permute(0, 2, 1), 
-                segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
-            ).permute(0, 2, 1)
+        if self.cfg.EXPLAINABLE:
+            if self.cfg.GRADCAM:
+                v_grad_tensor = torch.from_numpy(saliency_data['visual_grad']).to(mask_pred_results.device)
+                v_grad = v_grad_tensor.reshape(1, 1, -1) 
+                v_grad_source = voxel_map_to_source(
+                    v_grad.permute(0, 2, 1), 
+                    segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
+                ).permute(0, 2, 1)
+            else:
+                # do the same for every element of attn matrix
+                saliency_data['attn_weights_source'] = {}
+                for label, word_attn in saliency_data['attn_weights'].items():
+                    attn_tensor = torch.from_numpy(word_attn).to(mask_pred_results.device)
+                    attn_tensor = attn_tensor.reshape(1, 1, -1) 
+                    attn_source = voxel_map_to_source(
+                        attn_tensor.permute(0, 2, 1), 
+                        segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
+                    ).permute(0, 2, 1)
+                    saliency_data['attn_weights_source'][label] = attn_source
 
             # do the same for the target mask - this is temporary! debugging
-            target_mask_tensor = torch.from_numpy(saliency_data['target_mask']).to(mask_pred_results.device)
-            target_mask_source = voxel_map_to_source(
-                target_mask_tensor.reshape(1, 1, -1).permute(0, 2, 1), 
-                segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
-            ).permute(0, 2, 1)
+            # target_mask_tensor = torch.from_numpy(saliency_data['target_mask']).to(mask_pred_results.device)
+            # target_mask_source = voxel_map_to_source(
+            #     target_mask_tensor.reshape(1, 1, -1).permute(0, 2, 1), 
+            #     segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
+            # ).permute(0, 2, 1)
             
         pred_masks = mask_pred_results
         for i, pred_mask in enumerate(pred_masks):
@@ -482,17 +494,26 @@ class UniVLG(nn.Module):
                 pred_mask = pred_mask[:, :max_valid_point]
                 
                 if self.cfg.EXPLAINABLE:
-                    v_grad = v_grad_source.squeeze(0).detach().cpu().numpy()
-                    p2v_cpu = scannet_p2v[i].cpu().numpy()
-                    v_grad = v_grad[:,p2v_cpu]
-                    v_grad = v_grad[:,:max_valid_point]
-                    saliency_data['visual_grad'] = v_grad    
+                    if self.cfg.GRADCAM:
+                        v_grad = v_grad_source.squeeze(0).detach().cpu().numpy()
+                        p2v_cpu = scannet_p2v[i].cpu().numpy()
+                        v_grad = v_grad[:,p2v_cpu]
+                        v_grad = v_grad[:,:max_valid_point]
+                        saliency_data['visual_grad'] = v_grad  
+                    else:
+                        for label in saliency_data['attn_weights']:
+                            attn_source = saliency_data['attn_weights_source'][label]
+                            attn_source = attn_source.squeeze(0).detach().cpu().numpy()
+                            p2v_cpu = scannet_p2v[i].cpu().numpy()
+                            attn_source = attn_source[:,p2v_cpu]
+                            attn_source = attn_source[:,:max_valid_point]
+                            saliency_data['attn_weights_source'][label] = attn_source  
 
                     # target mask -debugging
-                    target_mask_source_squeezed = target_mask_source.squeeze(0).detach().cpu().numpy()
-                    target_mask_source_squeezed = target_mask_source_squeezed[:,p2v_cpu]
-                    target_mask_source_squeezed = target_mask_source_squeezed[:,:max_valid_point]
-                    saliency_data['target_mask'] = target_mask_source_squeezed  
+                    # target_mask_source_squeezed = target_mask_source.squeeze(0).detach().cpu().numpy()
+                    # target_mask_source_squeezed = target_mask_source_squeezed[:,p2v_cpu]
+                    # target_mask_source_squeezed = target_mask_source_squeezed[:,:max_valid_point]
+                    # saliency_data['target_mask'] = target_mask_source_squeezed  
 
             if self.cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
                 if 'ref' in batched_inputs[i]['dataset_name']:
@@ -556,7 +577,8 @@ class UniVLG(nn.Module):
                 )
         if self.cfg.EXPLAINABLE:
             processed_results[0]['saliency_data'] = saliency_data
-            del v_grad
+            if self.cfg.GRADCAM:
+                del v_grad
         torch.cuda.empty_cache()
         return processed_results
 
@@ -956,24 +978,41 @@ class UniVLG(nn.Module):
                     tokenized_answer=padded_answers if (self.cfg.GENERATION and self.training) else None,
                     answers=answers if (self.cfg.GENERATION and self.training) else None,
                 )
-                top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
-                target_score = outputs["pred_logits"][0, top_query_idx, 0]
-                target_mask = outputs["pred_masks"][0, top_query_idx]
+                if self.cfg.GRADCAM:
+                    top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
+                    target_score = outputs["pred_logits"][0, top_query_idx, 0]
+                    target_mask = outputs["pred_masks"][0, top_query_idx]
 
-                # Clear previous gradients and backpropagate from the filtered score
-                self.zero_grad()
-                target_score.backward(retain_graph=True)
-                # target_mask.sum().backward(retain_graph=True)
-                v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
-                v_grad = (v_grad * mask_features[0]).sum(0)
-                saliency_data = {
-                    # Visual importance: gradient of the score w.r.t input features
-                    "visual_grad": v_grad.cpu().detach().numpy(),
-                    # Token importance: gradient w.r.t text embeddings
-                    "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
-                    "target_mask": target_mask.cpu().detach().numpy()
-                }
-                
+                    # Clear previous gradients and backpropagate from the filtered score
+                    self.zero_grad()
+                    target_score.backward(retain_graph=True)
+                    # target_mask.sum().backward(retain_graph=True)
+                    v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
+                    v_grad = (v_grad * mask_features[0]).sum(0)
+                    saliency_data = {
+                        # Visual importance: gradient of the score w.r.t input features
+                        "visual_grad": v_grad.cpu().detach().numpy(),
+                        # Token importance: gradient w.r.t text embeddings
+                        # "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
+                        "target_mask": target_mask.cpu().detach().numpy()
+                    }
+                else: # visualize attention weights
+                    num_queries = 100
+                    token_labels = outputs['tokenized_text']
+
+                    # Build dictionary mapping token labels to their corresponding attention weights
+                    word_attn = {}
+                    for i, label in enumerate(token_labels):
+                        word_attn[label] = outputs['attn_weights'][0, num_queries + i, :].detach().cpu().numpy() # [text, visual]
+                    saliency_data = {
+                        # Visual importance: gradient of the score w.r.t input features
+                        "visual_grad": None, # v_grad.cpu().detach().numpy() if self.cfg.GRADCAM else None,
+                        # Token importance: gradient w.r.t text embeddings
+                        # "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
+                        "target_mask": None,
+                        "tokenized_text": token_labels,
+                        "attn_weights": word_attn
+                    }
                 if not self.training and self.cfg.MODEL.OPEN_VOCAB:
                     outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
                     
@@ -989,23 +1028,7 @@ class UniVLG(nn.Module):
                         ]
                     )
                     
-                # top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
-                # target_score = outputs["pred_logits"][0, top_query_idx, 0]
-                # target_mask = outputs["pred_masks"][0, top_query_idx]
-
-                # # Clear previous gradients and backpropagate from the filtered score
-                # self.zero_grad()
-                # target_score.backward(retain_graph=True)
-                # # target_mask.sum().backward(retain_graph=True)
-                # v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
-                # v_grad = (v_grad * mask_features[0]).sum(0)
-                # saliency_data = {
-                #     # Visual importance: gradient of the score w.r.t input features
-                #     "visual_grad": v_grad.cpu().detach().numpy(),
-                #     # Token importance: gradient w.r.t text embeddings
-                #     "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
-                #     "target_mask": target_mask.cpu().detach().numpy()
-                # }
+                
   
         else:
             outputs = self.mask_decoder(

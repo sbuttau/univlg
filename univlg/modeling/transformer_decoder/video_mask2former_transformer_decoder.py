@@ -385,10 +385,16 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             # --- XAI ---
             if getattr(self.cfg, "EXPLAINABLE", False):
                 # Rendiamo i text_feats capaci di accumulare gradienti
-                text_feats.requires_grad_(True)
-                text_feats.retain_grad()
-                # Salviamoli in self per poterli riprendere dopo la forward
-                self.text_embeddings = text_feats
+                tokens = self.lang_encoder.tokenizer.batch_encode_plus(
+                    captions,
+                    padding="longest" if not self.cfg.NON_PARAM_SOFTMAX else "max_length",
+                    return_tensors="pt",
+                    max_length=self.cfg.MODEL.MAX_SEQ_LEN
+                    if not self.cfg.TEXT_ENCODER_TYPE == "clip"
+                    else None,
+                    truncation=True,
+                )
+                tokenized_text = self.lang_encoder.tokenizer.convert_ids_to_tokens(tokens['input_ids'][0])
 
             text_feats = text_feats.permute(1, 0, 2)  # S X B X C
 
@@ -412,7 +418,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
         mask_features_pos = pe_layer(mask_features_xyz_segments).permute(1, 0, 2)
 
-        query_embed, output = self.init_object_queries(bs)
+        query_embed, output = self.init_object_queries(bs) #[100,1,256], [100,1,256]
 
         query_pad_mask = None
         predictions_class = []
@@ -473,13 +479,13 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             src_attn = mask_features.permute(2, 0, 1)
             pos_attn = mask_features_pos
 
-            output = self.transformer_cross_attention_layers[i](
-                output,
-                src_attn,
-                memory_mask=attn_mask,
+            output, attn_weight = self.transformer_cross_attention_layers[i](
+                output, # query + text feats
+                src_attn, # mask features
+                memory_mask=attn_mask, # mask for padded text tokens
                 memory_key_padding_mask=None,  # here we do not apply masking on padded region
-                pos=pos_attn,
-                query_pos=query_embed,
+                pos=pos_attn, # positional encoding for mask features
+                query_pos=query_embed, # positional encoding for query + text feats (only query_embed is learnable, lang_pos_embed is fixed)
             )
             output = self.transformer_self_attention_layers[i](
                 output,
@@ -493,7 +499,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
             # attention from mask_features to output
             if self.cfg.VIS_LANG_ATTN:
-                mask_features = self.vis_output_cross_attn[i](
+                mask_features, _ = self.vis_output_cross_attn[i](
                     mask_features.permute(2, 0, 1),
                     output,
                     pos=query_embed,
@@ -574,7 +580,9 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             ),
             "generation_logits": predictions_generation[-1] if self.cfg.GENERATION else None,
             'generation_language': generation_language if self.cfg.GENERATION else None,
-            'text_embeddings': self.text_embeddings if getattr(self.cfg, "EXPLAINABLE", False) else None,
+            # 'text_embeddings': self.text_embeddings if getattr(self.cfg, "EXPLAINABLE", False) else None,
+            'attn_weights': attn_weight if getattr(self.cfg, "EXPLAINABLE", False) else None,
+            'tokenized_text': tokenized_text if getattr(self.cfg, "EXPLAINABLE", False) else None,
         }
 
         if self.cfg.AR_LLM:
