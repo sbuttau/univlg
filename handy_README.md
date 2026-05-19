@@ -87,7 +87,7 @@ python data_preparation/parse_dataset.py
 
 it will divide descriptions by sentences and store respective files in the `data/` folder:
 - `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent.csv`
--`data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv`
 - `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent.csv`
 - `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all.csv`
 
@@ -151,7 +151,9 @@ VISUALIZE_REF=True \
 VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-EXPLAINABLE True
+EXPLAINABLE True \
+GRADCAM False \
+GMAR True
 SAVE_DATA_SAMPLE True \ 
 DATA_SAMPLE_PATH ckpts/misc/negations
 ```
@@ -174,3 +176,8 @@ streamlit run player2.py
 ```
 
 (make sure the script is taking the correct file inside. it is hardcoded)
+
+To visualize attention maps:
+```bash
+streamlit run player_attn_weights.py -- --file outputs/investigation/scene_scene0355_00_data.pth
+```

@@ -44,7 +44,7 @@ def visualize_pc_masks_and_bbox(
     data_dir=None, sample_name=None, inputs=None,
     gt_anchor_pcs=None, gt_anchor_bboxs=None, sr3d_data=None,
     anchor_pcs=None, anchor_bboxs=None, saliency_colors=None,
-    saliency_data=None
+    saliency_data=None, word_attn=None
 ):
     """
     Input
@@ -72,7 +72,33 @@ def visualize_pc_masks_and_bbox(
                      alpha=0.9,
                      visible=False, 
                      point_size=30) 
-
+        
+    # Interactive Word Saliency
+    if word_attn is not None:
+        for token, rollout in word_attn.items():
+            # rollout is expected to be N or N x 1
+            # We map the rollout values to a colormap (e.g., JET or Viridis)
+            
+            # Normalize rollout
+            r_min = np.percentile(rollout, 10)
+            r_max = np.percentile(rollout, 98)
+            rollout = np.clip((rollout - r_min) / (r_max - r_min + 1e-8), 0, 1)
+            
+            # Create a heatmap (Red for high attention, Blue/Grey for low)
+            # You might need to import matplotlib.cm as cm
+            import matplotlib.pyplot as plt
+            cmap = plt.get_cmap('jet')
+            token_colors = cmap(rollout.flatten())[:, :3] * 255
+            
+            # Add as a separate layer for each token
+            v.add_points(
+                f"Attn: {token}", 
+                pc,
+                colors=token_colors.astype(np.uint8),
+                alpha=0.9,
+                visible=False,  # Important: Start hidden so they don't overlap
+                point_size=30
+            )
      # add gt masks
     masks_colors = [np.tile(np.array([0, 255, 0])[None], (pc.shape[0], 1)) for pc in gt_pcs]
     v.add_points(
@@ -483,19 +509,22 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 raise e
 
         if self.cfg.VISUALIZE_REF:
-            if self.cfg.EXPLAINABLE and self.cfg.GRADCAM:
+            print_saliency = False
+            if self.cfg.EXPLAINABLE and self.cfg.GRADCAM or outputs[0]['saliency_data'].get('visual_grad') is not None:
+                print_saliency = True
                 import matplotlib.pyplot as plt
                 # normalize
-                v_grad = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
-                threshold = v_grad.mean()
-                v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
-                v_grad_log = np.log1p(v_grad_denoised)
-                v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
-                v_max = np.percentile(v_grad_log, 98)
-                v_grad_norm = np.clip((v_grad_log - v_min) / (v_max - v_min + 1e-8), 0, 1)
-                # v_min = np.percentile(v_grad, 10)
-                # v_max = np.percentile(v_grad, 98)
-                # v_grad_norm = np.clip((v_grad - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                v_grad_norm = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
+                
+                # threshold = v_grad.mean()
+                # v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
+                # v_grad_log = np.log1p(v_grad_denoised)
+                # v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
+                # v_max = np.percentile(v_grad_log, 98)
+                # v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                v_min = np.percentile(v_grad_norm, 10)
+                v_max = np.percentile(v_grad_norm, 98)
+                v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
                 # v_grad_norm = (v_grad - v_grad.min()) / (v_grad.max() - v_grad.min() + 1e-8)
 
                 # colormap
@@ -531,23 +560,24 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                         anchor_bboxs.append(np.expand_dims(_set_axis_align_bbox(anchor_pc), axis=0))
 
             scene_name = inputs[0]['file_name'].split('/')[-3] + " " + inputs[0]['sr3d_data'][0]['text_caption']
-            
-            scene_data = {
-                    "pc": inputs[0]['scannet_coords'].cpu().numpy(),           # [N, 3] per la BEV e 3D
-                    "color": inputs[0]['scannet_color'].cpu().numpy(),         # [N, 3] per il background
-                    "full_caption": inputs[0]['sr3d_data'][0]['text_caption'],
-                    "tokens": outputs[0]['saliency_data']['tokenized_text'],       # Lista di parole per il player
-                    "attn_matrix": outputs[0]['saliency_data']['attn_weights_source'], 
-                    "visual_grad": outputs[0]['saliency_data']['visual_grad'].cpu().numpy() if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None, # Il gradiente attuale
-                    "gt_mask": full_gt_mask,                                   # Per vedere dove "dovrebbe" guardare
-                    "target_id": target_id,
-                    "pred_masks_logits": outputs[0]['instances_3d']['pred_masks'].cpu().numpy(), # I logit dei pred mask prima della soglia
-                    "pred_scores": outputs[0]['instances_3d']['pred_scores'].cpu().numpy(), # I punteggi di confidenza per ogni pred mask
-                }
-            import os
-            os.makedirs("outputs/investigation", exist_ok=True)
-            output_file = f"outputs/investigation/scene_{inputs[0]['image_id']}_data.pth"
-            torch.save(scene_data, output_file)
+            if self.cfg.EXPLAINABLE:
+                scene_data = {
+                        "pc": inputs[0]['scannet_coords'].cpu().numpy(),           # [N, 3] per la BEV e 3D
+                        "color": inputs[0]['scannet_color'].cpu().numpy(),         # [N, 3] per il background
+                        "full_caption": inputs[0]['sr3d_data'][0]['text_caption'],
+                        "tokens": outputs[0]['saliency_data']['tokenized_text'] if not self.cfg.GRADCAM else None,       # Lista di parole per il player
+                        "attn_matrix": outputs[0]['saliency_data']['attn_weights_source'] if outputs[0]['saliency_data'].get('attn_weights_source') is not None else None, # Matrice di attenzione tra parole e punti
+                        "visual_grad": outputs[0]['saliency_data']['visual_grad'] if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None, # Il gradiente attuale
+                        "gt_mask": full_gt_mask,                                   # Per vedere dove "dovrebbe" guardare
+                        "target_id": target_id,
+                        "pred_masks_logits": outputs[0]['instances_3d']['pred_masks'].cpu().numpy(), # I logit dei pred mask prima della soglia
+                        "pred_scores": outputs[0]['instances_3d']['pred_scores'].cpu().numpy(), # I punteggi di confidenza per ogni pred mask
+                    }
+                import os
+                os.makedirs("outputs/investigation", exist_ok=True)
+                output_file = f"outputs/investigation/scene_{inputs[0]['image_id']}_data.pth"
+                torch.save(scene_data, output_file)
+                print(f"Saved scene data for explainability investigation to {output_file}")
         
             visualize_pc_masks_and_bbox(
                 pc=inputs[0]['scannet_coords'].numpy(),
@@ -564,8 +594,9 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 sr3d_data=inputs[0]['sr3d_data'][0],
                 anchor_pcs=anchor_pcs,
                 anchor_bboxs=anchor_bboxs,
-                saliency_colors=colors if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None,
-                saliency_data=outputs[0]['saliency_data'] if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None
+                saliency_colors=colors if print_saliency else None,
+                saliency_data=outputs[0]['saliency_data'] if print_saliency else None,
+                word_attn = outputs[0]['saliency_data']['attn_weights_source'] if self.cfg.EXPLAINABLE and outputs[0]['saliency_data'].get('attn_weights_source') is not None else None
             )
 
         self.detection_results.append(detected)

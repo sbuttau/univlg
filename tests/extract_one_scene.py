@@ -33,15 +33,26 @@ if __name__ == "__main__":
 
     # 2. Prendi la seconda riga (indice 1)
     # Uso [[1:2]] per mantenere il formato DataFrame ed evitare errori se la riga non esiste
-    entry = scene_samples.iloc[[0]]
-
-    # Chiedi conferma all'utente che sia la scena giusta
-    print(f"Campione estratto:\n{entry['description'].values[0]}")
-    confirm = input("È la scena giusta? (s/n): ")
-    if confirm.lower() != 's':
-        print("Operazione annullata.")
-        exit()
-
+    for idx in range(len(scene_samples)):
+        print(f"Campione estratto {idx}:\n{scene_samples.iloc[idx]['description']}\n")
+        # Chiedi conferma all'utente che sia la scena giusta
+        confirm = input("È la scena giusta? (s/n): ")
+        if confirm.lower() == 'n':
+            if idx == len(scene_samples) - 1:
+                print("Non ci sono più campioni da questa scena. Operazione annullata.")
+                exit()
+            else:
+                continue
+        else:
+            break
+    entry = scene_samples.iloc[[idx]]
+    print("Vuoi modificare la descrizione? (s/n): ")
+    if input().lower() == 's':
+        print("Inserisci la nuova descrizione:")
+        new_desc = input()
+        entry.at[entry.index[0], 'description'] = new_desc
+        print("Descrizione aggiornata.")
+        
     # 3. Salva
     output_path = f"data/refer_it_3d/{args.scene_id}_scanrefer_val.csv"
     entry.to_csv(output_path, index=False)

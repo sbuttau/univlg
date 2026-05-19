@@ -425,6 +425,10 @@ def add_maskformer2_video_config(cfg):
     cfg.AR_INSTRUCT = False
     cfg.SAVE_DATA_SAMPLE = False
     cfg.DATA_SAMPLE_PATH = None
+
     # EXPLAINABILITY
     cfg.EXPLAINABLE = False
     cfg.GRADCAM = False
+    cfg.GMAR = False
+    cfg.TEST_TIME_REGISTERS = True
+    cfg.NUM_TEST_REGISTERS = 4

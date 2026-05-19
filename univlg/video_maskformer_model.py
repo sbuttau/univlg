@@ -20,6 +20,7 @@ from univlg.data_video.sentence_utils import (
     convert_grounding_to_od_logits_ref,
     convert_grounding_to_od_logits_ref_xai
 )
+from univlg.modeling.explainability.gmar import attention_rollout, compute_head_weights
 from univlg.modeling.transformer_decoder.video_mask2former_transformer_decoder import (
     build_transformer_decoder,
 )
@@ -455,14 +456,14 @@ class UniVLG(nn.Module):
             ).permute(0, 2, 1)
 
         if self.cfg.EXPLAINABLE:
-            if self.cfg.GRADCAM:
+            if self.cfg.GRADCAM or saliency_data.get('visual_grad') is not None:
                 v_grad_tensor = torch.from_numpy(saliency_data['visual_grad']).to(mask_pred_results.device)
                 v_grad = v_grad_tensor.reshape(1, 1, -1) 
                 v_grad_source = voxel_map_to_source(
                     v_grad.permute(0, 2, 1), 
                     segments if not self.cfg.USE_GT_MASKS else scannet_all_masks_batched
                 ).permute(0, 2, 1)
-            else:
+            if saliency_data.get('attn_weights') is not None:
                 # do the same for every element of attn matrix
                 saliency_data['attn_weights_source'] = {}
                 for label, word_attn in saliency_data['attn_weights'].items():
@@ -494,13 +495,13 @@ class UniVLG(nn.Module):
                 pred_mask = pred_mask[:, :max_valid_point]
                 
                 if self.cfg.EXPLAINABLE:
-                    if self.cfg.GRADCAM:
+                    if self.cfg.GRADCAM or saliency_data.get('visual_grad') is not None:
                         v_grad = v_grad_source.squeeze(0).detach().cpu().numpy()
                         p2v_cpu = scannet_p2v[i].cpu().numpy()
                         v_grad = v_grad[:,p2v_cpu]
                         v_grad = v_grad[:,:max_valid_point]
                         saliency_data['visual_grad'] = v_grad  
-                    else:
+                    if saliency_data.get('attn_weights') is not None:
                         for label in saliency_data['attn_weights']:
                             attn_source = saliency_data['attn_weights_source'][label]
                             attn_source = attn_source.squeeze(0).detach().cpu().numpy()
@@ -577,7 +578,7 @@ class UniVLG(nn.Module):
                 )
         if self.cfg.EXPLAINABLE:
             processed_results[0]['saliency_data'] = saliency_data
-            if self.cfg.GRADCAM:
+            if self.cfg.GRADCAM or saliency_data.get('visual_grad') is not None:
                 del v_grad
         torch.cuda.empty_cache()
         return processed_results
@@ -978,24 +979,50 @@ class UniVLG(nn.Module):
                     tokenized_answer=padded_answers if (self.cfg.GENERATION and self.training) else None,
                     answers=answers if (self.cfg.GENERATION and self.training) else None,
                 )
-                if self.cfg.GRADCAM:
+                saliency_data={}
+                if self.cfg.GRADCAM or self.cfg.GMAR:
                     top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
                     target_score = outputs["pred_logits"][0, top_query_idx, 0]
                     target_mask = outputs["pred_masks"][0, top_query_idx]
-
-                    # Clear previous gradients and backpropagate from the filtered score
                     self.zero_grad()
+                    # Clear previous gradients and backpropagate from the filtered score
                     target_score.backward(retain_graph=True)
-                    # target_mask.sum().backward(retain_graph=True)
-                    v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
-                    v_grad = (v_grad * mask_features[0]).sum(0)
-                    saliency_data = {
-                        # Visual importance: gradient of the score w.r.t input features
-                        "visual_grad": v_grad.cpu().detach().numpy(),
-                        # Token importance: gradient w.r.t text embeddings
-                        # "token_grad": outputs['text_embeddings'].grad[0].abs().sum(-1).cpu().detach().numpy(),
-                        "target_mask": target_mask.cpu().detach().numpy()
-                    }
+                    if self.cfg.GMAR:
+                        # get gradients
+                        for i in range(len(self.mask_decoder.transformer_cross_attention_layers)):
+                            # Recuperiamo il tensore che abbiamo salvato nel forward
+                            layer = self.mask_decoder.active_layers[i]
+                            if hasattr(layer, 'last_grad'):
+                                self.mask_decoder.cross_attention_grads[i] = layer.last_grad
+                            else:
+                                print(f"Layer {i} has no grad")
+
+                        # GMAR:
+                        A_rollout = attention_rollout(self.mask_decoder.cross_attention_maps, self.mask_decoder.cross_attention_grads, self.device, alpha=0.5)
+                        token_labels = outputs['tokenized_text']
+
+                        saliency_data['target_mask'] = target_mask.cpu().detach().numpy()
+                        saliency_data['attn_rollout'] = A_rollout.cpu().detach().numpy()
+                        word_attn = {}
+                        for i, label in enumerate(token_labels):
+                            if label in word_attn.keys():
+                                key = f"{i}_{label}"
+                            else: 
+                                key = label
+                            word_attn[key] = A_rollout[self.num_queries + i, :].cpu().detach().numpy() # [text, visual]
+                        # remove [SEP] from all rollouts (checking attention sink)
+#- word_attn['[SEP]']
+                        word_attn = {label: attn for label, attn in word_attn.items()}
+                        saliency_data['attn_weights'] = word_attn
+                        saliency_data['tokenized_text'] = token_labels
+                        saliency_data['visual_grad'] = word_attn['[CLS]'] #- word_attn['[SEP]'] # visual tokens only
+
+                    if self.cfg.GRADCAM:
+                        v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
+                        v_grad = (v_grad * mask_features[0]).sum(0)
+                        saliency_data["visual_grad"] = v_grad.cpu().detach().numpy()
+                        saliency_data["target_mask"] = target_mask.cpu().detach().numpy()
+                    
                 else: # visualize attention weights
                     num_queries = 100
                     token_labels = outputs['tokenized_text']
@@ -1013,20 +1040,20 @@ class UniVLG(nn.Module):
                         "tokenized_text": token_labels,
                         "attn_weights": word_attn
                     }
-                if not self.training and self.cfg.MODEL.OPEN_VOCAB:
-                    outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
+                # if not self.training and self.cfg.MODEL.OPEN_VOCAB:
+                #     outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
                     
-                    outputs["pred_logits"] = torch.cat(
-                        [
-                            convert_grounding_to_od_logits_ref_xai(
-                                logits=outputs["pred_logits"][i][None],
-                                num_class=num_classes + 1,
-                                positive_maps=targets[i]["positive_map"],
-                                reduce="mean",
-                            )                                
-                            for i in range(bs)
-                        ]
-                    )
+                #     outputs["pred_logits"] = torch.cat(
+                #         [
+                #             convert_grounding_to_od_logits_ref_xai(
+                #                 logits=outputs["pred_logits"][i][None],
+                #                 num_class=num_classes + 1,
+                #                 positive_maps=targets[i]["positive_map"],
+                #                 reduce="mean",
+                #             )                                
+                #             for i in range(bs)
+                #         ]
+                #     )
                     
                 
   
@@ -1096,7 +1123,7 @@ class UniVLG(nn.Module):
                     [batched_input["num_classes"] for batched_input in batched_inputs]
                 )
 
-            if self.cfg.MODEL.OPEN_VOCAB and not self.cfg.EXPLAINABLE:
+            if self.cfg.MODEL.OPEN_VOCAB:# and not self.cfg.EXPLAINABLE:
                 outputs["pred_logits"] = outputs["pred_logits"].sigmoid()
                 reduce = "mean"
                 if 'sr3d_data' in batched_inputs[0]  or 'refcoco' in batched_inputs[0]['dataset_name']:
