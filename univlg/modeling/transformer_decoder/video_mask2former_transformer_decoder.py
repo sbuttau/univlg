@@ -129,8 +129,10 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
         self.vis_output_ffn = nn.ModuleList()
 
         # explainability
-        self.cross_attention_maps, self.cross_attention_grads = {}, {}
-        self.active_layers = {}
+        (self.cross_attention_maps_A, self.cross_attention_grads_A,
+        self.self_attention_maps_B, self.self_attention_grads_B,
+        self.cross_attention_maps_C, self.cross_attention_grads_C) = {}, {}, {}, {}, {}, {}
+        self.layers = [[] for _ in range(self.num_layers)] # this will store the actual layers for explainability visualization
 
         for _ in range(self.num_layers):
             self.transformer_self_attention_layers.append(
@@ -451,6 +453,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
         predictions_class.append(outputs_class)
         predictions_mask.append(outputs_mask)
         for i in range(self.num_layers):
+            self.layers[i] = []
             attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False
 
             if self.cfg.MODEL.OPEN_VOCAB:
@@ -483,7 +486,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             src_attn = mask_features.permute(2, 0, 1)
             pos_attn = mask_features_pos
 
-            output, attn_map = self.transformer_cross_attention_layers[i](
+            output = self.transformer_cross_attention_layers[i](
                 output, # query + text feats
                 src_attn, # mask features
                 memory_mask=attn_mask, # mask for padded text tokens
@@ -491,21 +494,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 pos=pos_attn, # positional encoding for mask features
                 query_pos=query_embed, # positional encoding for query + text feats (only query_embed is learnable, lang_pos_embed is fixed)
             )
-            self.active_layers[i] = self.transformer_cross_attention_layers[i]
-            self.cross_attention_maps[i] = attn_map
-            # self.cross_attention_grads[i] = self.transformer_cross_attention_layers[i].grad
-            # attn_map = attn_map * 1.0
-            # attn_map.retain_grad()
-            # if not attn_map.requires_grad:
-            #     attn_map.requires_grad_(True)
-            # self.cross_attention_maps[i] = attn_map
-            # if attn_map.requires_grad:
-            #     def get_grad_hook(grad, index=i):
-            #         # Inseriamo il gradiente in cima alla lista (perché il backward è inverso)
-            #         # o usiamo un indice per essere sicuri della corrispondenza
-            #         self.cross_attention_grads[index] = grad.detach().cpu()
-
-            #     attn_map.register_hook(get_grad_hook)
+            self.layers[i].append(self.transformer_cross_attention_layers[i])
 
             output = self.transformer_self_attention_layers[i](
                 output,
@@ -513,7 +502,8 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 tgt_key_padding_mask=query_pad_mask,
                 query_pos=query_embed,
             )
-
+            self.layers[i].append(self.transformer_self_attention_layers[i])
+            
             # --- INIEZIONE REGISTRI (arXiv:2506.08010) ---
             # Applichiamo i registri non addestrati prima della FFN se siamo in inferenza
             use_test_time_registers = getattr(self.cfg, "TEST_TIME_REGISTERS", False) and not self.training
@@ -542,12 +532,13 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             # ---------------------------------------------------------------
             # attention from mask_features to output
             if self.cfg.VIS_LANG_ATTN:
-                mask_features, _ = self.vis_output_cross_attn[i](
+                mask_features = self.vis_output_cross_attn[i](
                     mask_features.permute(2, 0, 1),
                     output,
                     pos=query_embed,
                     query_pos=mask_features_pos,
                 )
+                self.layers[i].append(self.vis_output_cross_attn[i])
                 mask_features = self.vis_output_ffn[i](mask_features)
                 mask_features = mask_features.permute(1, 2, 0)
             
@@ -624,7 +615,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
             "generation_logits": predictions_generation[-1] if self.cfg.GENERATION else None,
             'generation_language': generation_language if self.cfg.GENERATION else None,
             # 'text_embeddings': self.text_embeddings if getattr(self.cfg, "EXPLAINABLE", False) else None,
-            'attn_weights': attn_map if getattr(self.cfg, "EXPLAINABLE", False) else None,
+            'attn_weights': self.transformer_cross_attention_layers[self.num_layers-1].attn_probs if getattr(self.cfg, "EXPLAINABLE", False) else None, # return last attention map of the CA_A layer for saliency visualization (WIP)
             'tokenized_text': tokenized_text if getattr(self.cfg, "EXPLAINABLE", False) else None,
         }
 

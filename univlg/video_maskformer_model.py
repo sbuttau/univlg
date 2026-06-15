@@ -20,7 +20,8 @@ from univlg.data_video.sentence_utils import (
     convert_grounding_to_od_logits_ref,
     convert_grounding_to_od_logits_ref_xai
 )
-from univlg.modeling.explainability.gmar import attention_rollout, compute_head_weights
+from univlg.modeling.explainability.gmar import attention_rollout_gmar
+from univlg.modeling.explainability.chefer import attention_rollout_chefer
 from univlg.modeling.transformer_decoder.video_mask2former_transformer_decoder import (
     build_transformer_decoder,
 )
@@ -980,49 +981,132 @@ class UniVLG(nn.Module):
                     answers=answers if (self.cfg.GENERATION and self.training) else None,
                 )
                 saliency_data={}
-                if self.cfg.GRADCAM or self.cfg.GMAR:
+                if self.cfg.GRADCAM or self.cfg.GMAR or self.cfg.CHEFER:
                     top_query_idx = torch.argmax(outputs["pred_logits"][0, :, 0])
                     target_score = outputs["pred_logits"][0, top_query_idx, 0]
                     target_mask = outputs["pred_masks"][0, top_query_idx]
                     self.zero_grad()
-                    # Clear previous gradients and backpropagate from the filtered score
+                    
+                    # -----------------------------------------------------------------
+                    # CENTRALIZED AUTOGRAD (THE CLEAN SOLUTION)
+                    # -----------------------------------------------------------------
+                    # Raccogliamo preventivamente tutti i tensori (le mappe d'attenzione) 
+                    # di cui ci servirà il gradiente esplicito.
+                    layers_to_derive = []
+                    for layer in self.mask_decoder.layers:
+                        layers_to_derive.append(layer[0].attn_probs)  # Blocco A
+                        if self.cfg.CHEFER:
+                            layers_to_derive.append(layer[1].attn_probs)  # Blocco B
+                            layers_to_derive.append(layer[2].attn_probs)  # Blocco C
+                    
+                    # Calcoliamo programmaticamente tutti i gradienti in un colpo solo.
+                    # Questa funzione scavalca qualsiasi interruzione o slicing a valle.
+                    explicit_grads = torch.autograd.grad(
+                        outputs=target_score,
+                        inputs=layers_to_derive,
+                        retain_graph=True,  # Necessario per consentire il successivo .backward() di Grad-CAM
+                        allow_unused=True   # Impedisce crash se qualche layer non ha partecipato al grafo
+                    )
+                    
+                    # Mappiamo i gradienti calcolati direttamente dentro le istanze dei layer,
+                    # sostituendo formalmente il meccanismo instabile dei backward hook.
+                    grad_iter = iter(explicit_grads)
+                    for layer in self.mask_decoder.layers:
+                        # Se explicit_grads restituisce None per un elemento, facciamo il fallback su uno zero_like
+                        g_A = next(grad_iter)
+                        layer[0].last_grad = g_A if g_A is not None else torch.zeros_like(layer[0].attn_probs)
+                        
+                        if self.cfg.CHEFER:
+                            g_B = next(grad_iter)
+                            layer[1].last_grad = g_B if g_B is not None else torch.zeros_like(layer[1].attn_probs)
+                            g_C = next(grad_iter)
+                            layer[2].last_grad = g_C if g_C is not None else torch.zeros_like(layer[2].attn_probs)
+                    
+                    # Calcoliamo il backward standard rimasto solo per Grad-CAM (che legge mask_features.grad)
                     target_score.backward(retain_graph=True)
+                    # -----------------------------------------------------------------
+                    
+                    # =================================================================
+                    # EXECUTION: GMAR
+                    # =================================================================
                     if self.cfg.GMAR:
-                        # get gradients
                         for i in range(len(self.mask_decoder.transformer_cross_attention_layers)):
-                            # Recuperiamo il tensore che abbiamo salvato nel forward
-                            layer = self.mask_decoder.active_layers[i]
-                            if hasattr(layer, 'last_grad'):
-                                self.mask_decoder.cross_attention_grads[i] = layer.last_grad
-                            else:
-                                print(f"Layer {i} has no grad")
+                            layer = self.mask_decoder.layers[i][0]
+                            # Ora 'layer.last_grad' è popolato al 100%, pulito e senza None
+                            self.mask_decoder.cross_attention_grads[i] = layer.last_grad
+                            self.mask_decoder.cross_attention_maps[i] = layer.attn_probs
 
-                        # GMAR:
-                        A_rollout = attention_rollout(self.mask_decoder.cross_attention_maps, self.mask_decoder.cross_attention_grads, self.device, alpha=0.5)
+                        A_rollout = attention_rollout_gmar(
+                            self.mask_decoder.cross_attention_maps, 
+                            self.mask_decoder.cross_attention_grads, 
+                            self.device, alpha=0.5
+                        )
                         token_labels = outputs['tokenized_text']
 
                         saliency_data['target_mask'] = target_mask.cpu().detach().numpy()
                         saliency_data['attn_rollout'] = A_rollout.cpu().detach().numpy()
                         word_attn = {}
                         for i, label in enumerate(token_labels):
-                            if label in word_attn.keys():
-                                key = f"{i}_{label}"
-                            else: 
-                                key = label
-                            word_attn[key] = A_rollout[self.num_queries + i, :].cpu().detach().numpy() # [text, visual]
-                        # remove [SEP] from all rollouts (checking attention sink)
-#- word_attn['[SEP]']
+                            key = f"{i}_{label}" if label in word_attn.keys() else label
+                            word_attn[key] = A_rollout[self.num_queries + i, :].cpu().detach().numpy()
+                        
                         word_attn = {label: attn for label, attn in word_attn.items()}
                         saliency_data['attn_weights'] = word_attn
                         saliency_data['tokenized_text'] = token_labels
-                        saliency_data['visual_grad'] = word_attn['[CLS]'] #- word_attn['[SEP]'] # visual tokens only
+                        saliency_data['visual_grad'] = word_attn['[CLS]']
 
+                    # =================================================================
+                    # EXECUTION: GRADCAM
+                    # =================================================================
                     if self.cfg.GRADCAM:
-                        v_grad = torch.clamp(mask_features.grad[0], min=0) # take only positive values (RELU)
+                        v_grad = torch.clamp(mask_features.grad[0], min=0)
                         v_grad = (v_grad * mask_features[0]).sum(0)
                         saliency_data["visual_grad"] = v_grad.cpu().detach().numpy()
                         saliency_data["target_mask"] = target_mask.cpu().detach().numpy()
                     
+                    # =================================================================
+                    # EXECUTION: CHEFER
+                    # =================================================================
+                    if self.cfg.CHEFER:
+                        (chefer_cross_A_maps, chefer_cross_A_grads, 
+                         chefer_self_B_maps,  chefer_self_B_grads, 
+                         chefer_cross_C_maps, chefer_cross_C_grads) = ([], [], [], [], [], [])
+                        
+                        for i in range(len(self.mask_decoder.layers)):
+                            layer = self.mask_decoder.layers[i]
+                            
+                            # Estraiamo le mappe e i gradienti (già ripuliti da autograd) inviandoli a CPU
+                            chefer_cross_A_maps.append(layer[0].attn_probs[0].detach().cpu())
+                            chefer_cross_A_grads.append(layer[0].last_grad[0].detach().cpu())
+                            
+                            chefer_self_B_maps.append(layer[1].attn_probs[0].detach().cpu())
+                            chefer_self_B_grads.append(layer[1].last_grad[0].detach().cpu())
+                            
+                            chefer_cross_C_maps.append(layer[2].attn_probs[0].detach().cpu())
+                            chefer_cross_C_grads.append(layer[2].last_grad[0].detach().cpu())
+                        
+                        A_rollout = attention_rollout_chefer(
+                            chefer_cross_A_maps, chefer_cross_A_grads,
+                            chefer_self_B_maps,  chefer_self_B_grads,
+                            chefer_cross_C_maps, chefer_cross_C_grads,
+                            device='cpu'
+                        )
+                        token_labels = outputs['tokenized_text']
+
+                        saliency_data['target_mask'] = target_mask.cpu().detach().numpy()
+                        saliency_data['attn_rollout'] = A_rollout.cpu().detach().numpy()
+                        word_attn = {}
+                        for i, label in enumerate(token_labels):
+                            key = f"{i}_{label}" if label in word_attn.keys() else label
+                            word_attn[key] = A_rollout[self.num_queries + i, :].cpu().detach().numpy()
+                        # remove SEP from all attn maps
+                        # for label, attn in word_attn.items():
+                        #     if label != '[SEP]':
+                        #         word_attn[label] = attn - word_attn['[SEP]']    
+                        word_attn["top_query"] = A_rollout[top_query_idx, :].cpu().detach().numpy() #- word_attn['[SEP]']
+                        saliency_data['attn_weights'] = word_attn
+                        saliency_data['tokenized_text'] = token_labels
+                        saliency_data['visual_grad'] = word_attn['[CLS]']# - word_attn['[SEP]']
                 else: # visualize attention weights
                     num_queries = 100
                     token_labels = outputs['tokenized_text']
@@ -1086,11 +1170,11 @@ class UniVLG(nn.Module):
             losses = self.criterion(
                 outputs, targets, decoder_3d=decoder_3d, actual_decoder_3d=actual_decoder_3d
             )
-            print("Loss_CE: ", losses.get('loss_ce', None))
-            print("Loss_Dice: ", losses.get('loss_dice', None))
-            print("Loss_3D_Box: ", losses.get('loss_bbox', None))
-            print("Loss_mask: ", losses.get('loss_mask', None))
-            print("Loss giou: ", losses.get('loss_giou', None))
+            # print("Loss_CE: ", losses.get('loss_ce', None))
+            # print("Loss_Dice: ", losses.get('loss_dice', None))
+            # print("Loss_3D_Box: ", losses.get('loss_bbox', None))
+            # print("Loss_mask: ", losses.get('loss_mask', None))
+            # print("Loss giou: ", losses.get('loss_giou', None))
             for k in list(losses.keys()):
                 if k in self.criterion.weight_dict:
                     losses[k] *= self.criterion.weight_dict[k]

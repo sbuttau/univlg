@@ -430,5 +430,6 @@ def add_maskformer2_video_config(cfg):
     cfg.EXPLAINABLE = False
     cfg.GRADCAM = False
     cfg.GMAR = False
-    cfg.TEST_TIME_REGISTERS = True
+    cfg.TEST_TIME_REGISTERS = False
     cfg.NUM_TEST_REGISTERS = 4
+    cfg.CHEFER = False

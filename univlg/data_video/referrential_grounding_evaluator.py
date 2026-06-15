@@ -82,7 +82,9 @@ def visualize_pc_masks_and_bbox(
             # Normalize rollout
             r_min = np.percentile(rollout, 10)
             r_max = np.percentile(rollout, 98)
-            rollout = np.clip((rollout - r_min) / (r_max - r_min + 1e-8), 0, 1)
+            rollout_vis = np.clip(rollout, 0, r_max)
+            rollout = (rollout_vis - rollout_vis.min()) / (rollout_vis.max() - rollout_vis.min())
+            # rollout = np.clip((rollout - r_min) / (r_max - r_min + 1e-8), 0, 1)
             
             # Create a heatmap (Red for high attention, Blue/Grey for low)
             # You might need to import matplotlib.cm as cm
@@ -510,27 +512,28 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
 
         if self.cfg.VISUALIZE_REF:
             print_saliency = False
-            if self.cfg.EXPLAINABLE and self.cfg.GRADCAM or outputs[0]['saliency_data'].get('visual_grad') is not None:
-                print_saliency = True
-                import matplotlib.pyplot as plt
-                # normalize
-                v_grad_norm = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
-                
-                # threshold = v_grad.mean()
-                # v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
-                # v_grad_log = np.log1p(v_grad_denoised)
-                # v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
-                # v_max = np.percentile(v_grad_log, 98)
-                # v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
-                v_min = np.percentile(v_grad_norm, 10)
-                v_max = np.percentile(v_grad_norm, 98)
-                v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
-                # v_grad_norm = (v_grad - v_grad.min()) / (v_grad.max() - v_grad.min() + 1e-8)
+            if self.cfg.EXPLAINABLE:
+                if self.cfg.GRADCAM or outputs[0]['saliency_data'].get('visual_grad') is not None:
+                    print_saliency = True
+                    import matplotlib.pyplot as plt
+                    # normalize
+                    v_grad_norm = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
+                    
+                    # threshold = v_grad.mean()
+                    # v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
+                    # v_grad_log = np.log1p(v_grad_denoised)
+                    # v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
+                    # v_max = np.percentile(v_grad_log, 98)
+                    # v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                    v_min = np.percentile(v_grad_norm, 10)
+                    v_max = np.percentile(v_grad_norm, 98)
+                    v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                    # v_grad_norm = (v_grad - v_grad.min()) / (v_grad.max() - v_grad.min() + 1e-8)
 
-                # colormap
-                cmap = plt.get_cmap('jet')
-                colors = cmap(v_grad_norm)[:, :3] # take rgb only
-                colors = (colors * 255).astype(np.uint8)
+                    # colormap
+                    cmap = plt.get_cmap('jet')
+                    colors = cmap(v_grad_norm)[:, :3] # take rgb only
+                    colors = (colors * 255).astype(np.uint8)
 
             gt_anchor_bboxs = None
             gt_anchor_pcs = None

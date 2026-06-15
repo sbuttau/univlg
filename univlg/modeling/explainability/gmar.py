@@ -14,7 +14,7 @@ def compute_head_weights(gradients, reg_type="L1"):
     w = head_importance / (head_importance.sum() + 1e-8)
     return w
 
-def attention_rollout(cross_attention_maps, cross_attention_grads, device='cpu',alpha=0.5):
+def attention_rollout_gmar(cross_attention_maps, cross_attention_grads, device='cpu',alpha=0.5):
     ''''
     Peforms gradient-based attention rollout (reference: https://arxiv.org/pdf/2504.19414).
     Inputs:
