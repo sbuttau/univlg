@@ -13,10 +13,10 @@ import debugpy
 
 # Wait for VSCode to attach
 import sys
-# debugpy.listen(("0.0.0.0", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
-# print("Debugger attached!")
+debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
+print("Debugger attached!")
 
 import socket
 import copy
@@ -61,6 +61,7 @@ from detectron2.engine import (
 )
 from detectron2.engine.defaults import hooks
 from detectron2.evaluation import COCOEvaluator, DatasetEvaluator, inference_on_dataset
+# import detectron2.evaluation as d2_evaluator
 from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.utils.logger import setup_logger
@@ -102,6 +103,65 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 st = ipdb.set_trace
+
+# original_inference_on_dataset = d2_evaluator.inference_on_dataset
+
+# def patched_inference_on_dataset(model, data_loader, evaluator, callbacks=None):
+#     # Monkey patch: redefine detectron2's inference on dataset function to support test-time register analysis 
+
+#     print("HookManager injection in detectron2 inference_on_dataset...")
+    
+#     # Inizializziamo il nostro manager (Step 2A)
+#     # from la_tua_ricerca.univlg_hook_manager import UniVLGHookManager
+#     # from la_tua_ricerca.hook_manager import HookMode
+#     import torch
+#     import os
+#     import numpy as np
+#     # print(model)
+#     for name, _ in model.named_children():
+#         print("Sotto-modulo trovato:", name)
+#     # manager = UniVLGHookManager(model)
+#     # manager.reinit(mode=HookMode.ANALYSIS)
+#     # manager.finalize() # activate hooks on model
+#     decoder = model.mask_decoder
+#     print(f"Tipo di decoder: {type(decoder)}")
+    
+#     # Stampiamo i primi due livelli di figli dentro il decoder 
+#     # per identificare dove risiede la lista dei Transformer Layers
+#     print("\n=== STRUTTURA INTERNA DI MASK_DECODER ===")
+#     for name, child in decoder.named_children():
+#         print(f"--> Sotto-modulo del decoder: {name} ({type(child).__name__})")
+#         # Se ha layer o blocchi interni, stampiamo anche i loro componenti
+#         if name in ['layers', 'transformer_layers', 'blocks', 'transformer']:
+#             for sub_name, sub_child in child[0].named_children():
+#                 print(f"    └── Componente del Layer 0: {sub_name} ({type(sub_child).__name__})")
+#     print("=========================================\n")
+#     # Limit the dataloader to a few batches for this analysis 
+#     import itertools
+#     limited_data_loader = itertools.islice(data_loader, 35)
+    
+#     # original inference loop 
+#     results = original_inference_on_dataset(
+#         model, 
+#         limited_data_loader, 
+#         evaluator, 
+#         callbacks
+#     )
+    
+#     # extract and save the max norms across sublayers 
+#     print("Max norms extraction...")
+#     num_decoder_layers = manager.num_layers()
+#     mean_max_norms = manager.get_max_norms_across_sublayers(num_layers=num_decoder_layers)
+    
+#     output_path = "/workspace/univlg/max_norms_sublayers.npy"
+#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+#     np.save(output_path, mean_max_norms)
+#     print(f"Max norms saved to {output_path}")
+#     sys.exit(0)
+
+# # substitute the original function with the patched one
+# inference_on_dataset = patched_inference_on_dataset
+# print("[MONKEY PATCH] detectron2 inference_on_dataset patched successfully.")
 
 class OneCycleLr_D2(torch.optim.lr_scheduler.OneCycleLR):
     def __init__(self, *args, **kwargs):

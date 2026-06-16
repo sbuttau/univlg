@@ -273,6 +273,36 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
         output = self.query_feat.weight.unsqueeze(1).repeat(1, bs, 1)
         return query_embed, output
 
+    def _log_systematic_norms(self, current_output, text_feats, stage_name, layer_idx):
+            """Helper method to isolate queries vs text blocks and compute peak L2 norms."""
+            if self.training:
+                return
+
+            with torch.no_grad():
+                # Initialize metrics tracker if it doesn't exist
+                if not hasattr(self, "_systematic_registry"):
+                    self._systematic_registry = {}
+
+                key = f"L{layer_idx}_{stage_name}"
+                if key not in self._systematic_registry:
+                    self._systematic_registry[key] = {"queries": [], "text": []}
+
+                num_text_tokens = text_feats.shape[0] if text_feats is not None else 0
+                
+                # Slice the sequence along dim=0 (Sequence dimension)
+                if num_text_tokens > 0 and current_output.shape[0] > num_text_tokens:
+                    query_slice = current_output[:-num_text_tokens, :, :]
+                    text_slice = current_output[-num_text_tokens:, :, :]
+                    
+                    q_norm = torch.norm(query_slice, p=2, dim=-1).max().item()
+                    t_norm = torch.norm(text_slice, p=2, dim=-1).max().item()
+                else:
+                    q_norm = torch.norm(current_output, p=2, dim=-1).max().item()
+                    t_norm = 0.0
+
+                self._systematic_registry[key]["queries"].append(q_norm)
+                self._systematic_registry[key]["text"].append(t_norm)
+
     def forward(
         self,
         mask_features,
@@ -495,7 +525,8 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 query_pos=query_embed, # positional encoding for query + text feats (only query_embed is learnable, lang_pos_embed is fixed)
             )
             self.layers[i].append(self.transformer_cross_attention_layers[i])
-
+            self._log_systematic_norms(output, text_feats, stage_name="1_Vision_Cross", layer_idx=i)
+            
             output = self.transformer_self_attention_layers[i](
                 output,
                 tgt_mask=None,
@@ -503,32 +534,34 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 query_pos=query_embed,
             )
             self.layers[i].append(self.transformer_self_attention_layers[i])
+            self._log_systematic_norms(output, text_feats, stage_name="2_Self_Attn", layer_idx=i)
+
+            # # --- INIEZIONE REGISTRI (arXiv:2506.08010) ---
+            # # Applichiamo i registri non addestrati prima della FFN se siamo in inferenza
+            # use_test_time_registers = getattr(self.cfg, "TEST_TIME_REGISTERS", False) and not self.training
             
-            # --- INIEZIONE REGISTRI (arXiv:2506.08010) ---
-            # Applichiamo i registri non addestrati prima della FFN se siamo in inferenza
-            use_test_time_registers = getattr(self.cfg, "TEST_TIME_REGISTERS", False) and not self.training
-            
-            if use_test_time_registers:
-                num_regs = getattr(self.cfg, "NUM_TEST_REGISTERS", 4)
-                # output shape attuale: [seq_len, batch_size, dim] (notare il formato PyTorch Transformer standard S X B X C)
-                s_len, batch_size, dim = output.shape
+            # if use_test_time_registers:
+            #     num_regs = getattr(self.cfg, "NUM_TEST_REGISTERS", 4)
+            #     # output shape attuale: [seq_len, batch_size, dim] (notare il formato PyTorch Transformer standard S X B X C)
+            #     s_len, batch_size, dim = output.shape
                 
-                # Creiamo i token di registro vuoti (riempiti di zeri come da paper)
-                untrained_registers = torch.zeros(num_regs, batch_size, dim, dtype=output.dtype, device=output.device)
+            #     # Creiamo i token di registro vuoti (riempiti di zeri come da paper)
+            #     untrained_registers = torch.zeros(num_regs, batch_size, dim, dtype=output.dtype, device=output.device)
                 
-                # Concateniamo i registri lungo l'asse della sequenza (dim=0 in questa configurazione del tensore)
-                output = torch.cat([output, untrained_registers], dim=0)
-            # ----------------------------------------------
+            #     # Concateniamo i registri lungo l'asse della sequenza (dim=0 in questa configurazione del tensore)
+            #     output = torch.cat([output, untrained_registers], dim=0)
+            # # ----------------------------------------------
 
             # FFN
             output = self.transformer_ffn_layers[i](output)
-            
-            # --- RIMOZIONE REGISTRI (SPOSTATA QUI PER EVITARE IL CRASH) ---
-            if use_test_time_registers:
-                # Ripristiniamo la dimensione originale del tensore (es. da 131 torna a 127)
-                # isolando i registri prima che entrino nelle cross-attention successive
-                decoder_registers_output = output[-num_regs:]
-                output = output[:-num_regs]
+            self._log_systematic_norms(output, text_feats, stage_name="3_Main_FFN", layer_idx=i)
+
+            # # --- RIMOZIONE REGISTRI (SPOSTATA QUI PER EVITARE IL CRASH) ---
+            # if use_test_time_registers:
+            #     # Ripristiniamo la dimensione originale del tensore (es. da 131 torna a 127)
+            #     # isolando i registri prima che entrino nelle cross-attention successive
+            #     decoder_registers_output = output[-num_regs:]
+            #     output = output[:-num_regs]
             # ---------------------------------------------------------------
             # attention from mask_features to output
             if self.cfg.VIS_LANG_ATTN:
@@ -621,6 +654,29 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
         if self.cfg.AR_LLM:
             out['generation_labels'] = generation_labels
+
+        # XAI - target evaluation phase compilation
+        if not self.training and getattr(self, "_systematic_registry", None) is not None:
+            import json
+            import os
+            import numpy as np
+
+            output_dir = "/workspaces/univlg/analysis_plots"
+            os.makedirs(output_dir, exist_ok=True)
+
+            compiled_summary = {}
+            for k, metrics in self._systematic_registry.items():
+                compiled_summary[k] = {
+                    "avg_max_query_norm": float(np.mean(metrics["queries"])),
+                    "avg_max_text_norm": float(np.mean(metrics["text"])),
+                    "num_batches_sampled": len(metrics["queries"])
+                }
+
+            # Sovrascriviamo il file JSON ad ogni batch. 
+            # In questo modo, anche se interrompi il processo a metà (es. dopo 500 immagini),
+            # avrai comunque in mano la media parziale aggiornata all'ultimo istante!
+            with open(os.path.join(output_dir, "fine_grained_norms.json"), "w") as f:
+                json.dump(compiled_summary, f, indent=4)
         return out
     
     def forward_generation_head(self, generation_features, captions, answers):

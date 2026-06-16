@@ -152,10 +152,9 @@ VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 EXPLAINABLE True \
-GRADCAM False \
-GMAR True
+CHEFER True \
 SAVE_DATA_SAMPLE True \ 
-DATA_SAMPLE_PATH ckpts/misc/negations
+DATA_SAMPLE_PATH ckpts/misc/
 ```
 
 To visualize BEV of the scene with multiple possible tokens to query,first run the standalone_eval_attention.py:
