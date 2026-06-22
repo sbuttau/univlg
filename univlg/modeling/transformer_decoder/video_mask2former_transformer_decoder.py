@@ -284,29 +284,34 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
 
             key = f"L{layer_idx}_{stage_name}"
             if key not in self._systematic_registry:
-                self._systematic_registry[key] = {"queries": [], "text": []}
+                self._systematic_registry[key] = {"queries": [], "text": [], "queries_max": [], "text_max": []}
+            num_text_tokens = current_output.shape[0] - self.num_queries
 
-            num_text_tokens = text_feats.shape[0] if text_feats is not None else 0
-            
             # Enforce complete detachment from any potential graph
             with torch.no_grad():
                 tensor_to_profile = current_output.detach()
                 
                 if num_text_tokens > 0 and tensor_to_profile.shape[0] > num_text_tokens:
                     # Slicing the detached tensor
-                    query_slice = tensor_to_profile[:-num_text_tokens, :, :]
-                    text_slice = tensor_to_profile[-num_text_tokens:, :, :]
+                    query_slice = tensor_to_profile[:self.num_queries, :, :]
+                    text_slice = tensor_to_profile[self.num_queries:self.num_queries + num_text_tokens, :, :]
                     
                     # Compute norm and immediately push the reduction to CPU before calling .item()
                     q_norm = torch.norm(query_slice, p=2, dim=-1).max().detach().cpu().item()
                     t_norm = torch.norm(text_slice, p=2, dim=-1).max().detach().cpu().item()
+
+                    # Compute also max of the feature channel
+                    q_max = torch.max(torch.abs(query_slice), dim=-1)[0].max().detach().cpu().item()
+                    t_max = torch.max(torch.abs(text_slice), dim=-1)[0].max().detach().cpu().item()
                 else:
                     q_norm = torch.norm(tensor_to_profile, p=2, dim=-1).max().detach().cpu().item()
                     t_norm = 0.0
 
                 self._systematic_registry[key]["queries"].append(q_norm)
                 self._systematic_registry[key]["text"].append(t_norm)
-                
+                self._systematic_registry[key]["queries_max"].append(q_max)
+                self._systematic_registry[key]["text_max"].append(t_max)
+
                 # Optional: Clear fragmentation if running on a tight hardware budget
                 # if len(self._systematic_registry[key]["queries"]) % 50 == 0:
                 #     torch.cuda.empty_cache()
@@ -680,7 +685,9 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                     compiled_summary[k] = {
                         "avg_max_query_norm": float(np.mean(metrics["queries"])),
                         "avg_max_text_norm": float(np.mean(metrics["text"])),
-                        "num_batches_sampled": len(metrics["queries"])
+                        "num_batches_sampled": len(metrics["queries"]),
+                        "avg_max_query_feature": float(np.mean(metrics["queries_max"])),
+                        "avg_max_text_feature": float(np.mean(metrics["text_max"])),
                     }
 
                 # Sovrascriviamo il file JSON ad ogni batch. 
