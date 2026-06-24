@@ -151,8 +151,11 @@ VISUALIZE_REF=True \
 VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-EXPLAINABLE True \
-CHEFER True \
+EXPLAINABLE False \
+CHEFER False \
+LOG_NORMS True \
+SAVE_TEST_RESULTS True \
+TEST_RESULT_EXPORT_PATH analysis_plots \
 SAVE_DATA_SAMPLE True \ 
 DATA_SAMPLE_PATH ckpts/misc/
 ```

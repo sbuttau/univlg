@@ -309,6 +309,7 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         self.detection_results = []
         self.mask_detection_results = []
         self.num_viz = 0
+        self.detection_results_to_export = []
 
     def process(self, inputs, outputs):
         if type(outputs[0]) != dict:
@@ -453,25 +454,25 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 top_bboxs.append(_set_axis_align_bbox(cur_pc))
         top_bboxs = np.array(top_bboxs)
 
-        if self.cfg.TEST_DATASET_INFERENCE:
-            assert len(inputs[0]['sr3d_data'])
-            if pred_pcs[0].shape[0] > 0:
-                max_ = np.max(pred_pcs[0], axis=0)
-                min_ = np.min(pred_pcs[0], axis=0)
-            else:
-                max_ = np.array([0.0, 0.0, 0.0])
-                min_ = np.array([0.0, 0.0, 0.0])
+        # if self.cfg.TEST_DATASET_INFERENCE or self.cfg.SAVE_TEST_RESULTS:
+        #     assert len(inputs[0]['sr3d_data'])
+        #     if pred_pcs[0].shape[0] > 0:
+        #         max_ = np.max(pred_pcs[0], axis=0)
+        #         min_ = np.min(pred_pcs[0], axis=0)
+        #     else:
+        #         max_ = np.array([0.0, 0.0, 0.0])
+        #         min_ = np.array([0.0, 0.0, 0.0])
 
-            center = (max_ + min_) / 2.0
-            box_size = max_ - min_
-            scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
-            self.detection_results.append({
-                "scene_id": inputs[0]['image_id'],
-                "object_id": inputs[0]['sr3d_data'][0]['target_id'],
-                "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
-                "bbox": scanrefer_box.tolist(),
-            })
-            return
+        #     center = (max_ + min_) / 2.0
+        #     box_size = max_ - min_
+        #     scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
+        #     self.detection_results_to_export.append({
+        #         "scene_id": inputs[0]['image_id'],
+        #         "object_id": inputs[0]['sr3d_data'][0]['target_id'],
+        #         "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
+        #         "bbox": scanrefer_box.tolist(),
+        #     })
+            # return
 
         target_id = inputs[0]['sr3d_data'][0]['target_id']
 
@@ -509,7 +510,35 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 gt_pc = np.array([[0, 0, 0]])
             else:
                 raise e
+        
+        # --- EXPORT RESULTS ---
+        if self.cfg.TEST_DATASET_INFERENCE or self.cfg.SAVE_TEST_RESULTS:
+            assert len(inputs[0]['sr3d_data'])
+            if pred_pcs[0].shape[0] > 0:
+                max_ = np.max(pred_pcs[0], axis=0)
+                min_ = np.min(pred_pcs[0], axis=0)
+            else:
+                max_ = np.array([0.0, 0.0, 0.0])
+                min_ = np.array([0.0, 0.0, 0.0])
 
+            center = (max_ + min_) / 2.0
+            box_size = max_ - min_
+            scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
+
+            # Estraiamo lo IoU del Top-1 bounding box (indice 0)
+            top1_iou = float(ious[0, 0]) if ious.shape[0] > 0 else 0.0
+            
+            # Definiamo il successo binario: 1 se IoU >= 0.25, altrimenti 0
+            is_success_binary = 1 if top1_iou >= 0.25 else 0
+
+            self.detection_results_to_export.append({
+                "scene_id": inputs[0]['image_id'],
+                "object_id": inputs[0]['sr3d_data'][0]['target_id'],
+                "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
+                "bbox": scanrefer_box.tolist(),
+                "iou": top1_iou,                  # Utile per debug analitico
+                "success": is_success_binary      # Il flag binario che ti serve (1 o 0)
+            })
         if self.cfg.VISUALIZE_REF:
             print_saliency = False
             if self.cfg.EXPLAINABLE:
@@ -617,19 +646,23 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
             detection_results = self.detection_results
             mask_detection_results = self.mask_detection_results
 
-        if self.cfg.TEST_DATASET_INFERENCE:
+        # if self.cfg.TEST_DATASET_INFERENCE:
+        if self.cfg.SAVE_TEST_RESULTS:
             try:
+                if self.cfg.TEST_RESULT_EXPORT_PATH is None:
+                    raise ValueError("TEST_RESULT_EXPORT_PATH is not set in the configuration.")
                 Path(self.cfg.TEST_RESULT_EXPORT_PATH).mkdir(parents=True, exist_ok=True)
                 print(f'exporting test results to {self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json')
                 with open(f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json', 'w') as json_file:
-                    json.dump(detection_results, json_file, indent=4)
+                    json.dump(self.detection_results_to_export, json_file, indent=4)
             except Exception as e:
                 print(f"Error exporting test results: {e}")
                 st()
-            return None
+            # return None
 
         self.detection_results = []
         self.mask_detection_results = []
+        self.detection_results_to_export = []
         detection_results = np.array(detection_results).astype(np.float32).mean(axis=0)
         mask_detection_results = np.array(mask_detection_results).astype(np.float32).mean(axis=0)
             

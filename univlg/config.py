@@ -434,3 +434,4 @@ def add_maskformer2_video_config(cfg):
     cfg.NUM_TEST_REGISTERS = 4
     cfg.CHEFER = False
     cfg.LOG_NORMS = False
+    cfg.SAVE_TEST_RESULTS = False
