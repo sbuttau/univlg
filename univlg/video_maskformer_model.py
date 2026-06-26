@@ -1237,6 +1237,8 @@ class UniVLG(nn.Module):
 
             mask_cls_results = outputs["pred_logits"]
             mask_pred_results = outputs["pred_masks"]
+            if self.cfg.LOG_NORMS:
+                logged_norms = outputs["logged_norms"] # contains norms stats of each decoder layer of this batch
             del outputs
 
             # Processing for ghost points
@@ -1255,7 +1257,8 @@ class UniVLG(nn.Module):
                 )
                 if generation_language is not None:
                     return generation_language, processed_results
-
+                if self.cfg.LOG_NORMS:
+                    processed_results.append(logged_norms)
                 return processed_results
 
             # Normal Processing

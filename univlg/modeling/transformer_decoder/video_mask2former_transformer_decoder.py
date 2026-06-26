@@ -296,21 +296,21 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                     query_slice = tensor_to_profile[:self.num_queries, :, :]
                     text_slice = tensor_to_profile[self.num_queries:self.num_queries + num_text_tokens, :, :]
                     
-                    # Compute norm and immediately push the reduction to CPU before calling .item()
-                    q_norm = torch.norm(query_slice, p=2, dim=-1).max().detach().cpu().item()
-                    t_norm = torch.norm(text_slice, p=2, dim=-1).max().detach().cpu().item()
+                    # MAX NORMS
+                    q_norm = torch.norm(query_slice, p=2, dim=-1).max(dim=0).values.detach().cpu()#.item()
+                    t_norm = torch.norm(text_slice, p=2, dim=-1).max(dim=0).values.detach().cpu()#.item()
 
-                    # Compute also max of the feature channel
-                    q_max = torch.max(torch.abs(query_slice), dim=-1)[0].max().detach().cpu().item()
-                    t_max = torch.max(torch.abs(text_slice), dim=-1)[0].max().detach().cpu().item()
+                    # MAX FEATURES
+                    q_max = torch.max(torch.abs(query_slice), dim=-1)[0].max(dim=0).values.detach().cpu()#.item()
+                    t_max = torch.max(torch.abs(text_slice), dim=-1)[0].max(dim=0).values.detach().cpu()#.item()
                 else:
-                    q_norm = torch.norm(tensor_to_profile, p=2, dim=-1).max().detach().cpu().item()
+                    q_norm = torch.norm(tensor_to_profile, p=2, dim=-1).max(dim=0).values.detach().cpu()#.item()
                     t_norm = 0.0
 
-                self._systematic_registry[key]["queries"].append(q_norm)
-                self._systematic_registry[key]["text"].append(t_norm)
-                self._systematic_registry[key]["queries_max"].append(q_max)
-                self._systematic_registry[key]["text_max"].append(t_max)
+                self._systematic_registry[key]["queries"].extend(q_norm)
+                self._systematic_registry[key]["text"].extend(t_norm)
+                self._systematic_registry[key]["queries_max"].extend(q_max)
+                self._systematic_registry[key]["text_max"].extend(t_max)
 
                 # Optional: Clear fragmentation if running on a tight hardware budget
                 # if len(self._systematic_registry[key]["queries"]) % 50 == 0:
@@ -683,19 +683,23 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 compiled_summary = {}
                 for k, metrics in self._systematic_registry.items():
                     compiled_summary[k] = {
-                        "avg_max_query_norm": float(np.mean(metrics["queries"])),
-                        "avg_max_text_norm": float(np.mean(metrics["text"])),
-                        "num_batches_sampled": len(metrics["queries"]),
-                        "avg_max_query_feature": float(np.mean(metrics["queries_max"])),
-                        "avg_max_text_feature": float(np.mean(metrics["text_max"])),
+                        # "avg_max_query_norm": float(np.mean(metrics["queries"])),
+                        # "avg_max_text_norm": float(np.mean(metrics["text"])),
+                        # "num_batches_sampled": len(metrics["queries"]),
+                        # "avg_max_query_feature": float(np.mean(metrics["queries_max"])),
+                        # "avg_max_text_feature": float(np.mean(metrics["text_max"])),
+                        "max_query_norms": [float(x) for x in metrics["queries"]],
+                        "max_text_norms": [float(x) for x in metrics["text"]],
+                        "max_query_features": [float(x) for x in metrics["queries_max"]],
+                        "max_text_features": [float(x) for x in metrics["text_max"]],
                     }
-
+                out["logged_norms"] = compiled_summary
                 # Sovrascriviamo il file JSON ad ogni batch. 
                 # In questo modo, anche se interrompi il processo a metà (es. dopo 500 immagini),
                 # avrai comunque in mano la media parziale aggiornata all'ultimo istante!
-                with open(os.path.join(output_dir, f"fine_grained_norms_{self.cfg.TEST.SUBSAMPLE_DATA}.json"), "w") as f:
-                    print(f"Saving fine-grained norms to {os.path.join(output_dir, f'fine_grained_norms_{self.cfg.TEST.SUBSAMPLE_DATA}.json')}")
-                    json.dump(compiled_summary, f, indent=4)
+                # with open(os.path.join(output_dir, f"fine_grained_norms_{self.cfg.TEST.SUBSAMPLE_DATA}.json"), "w") as f:
+                #     print(f"Saving fine-grained norms to {os.path.join(output_dir, f'fine_grained_norms_{self.cfg.TEST.SUBSAMPLE_DATA}.json')}")
+                #     json.dump(compiled_summary, f, indent=4)
         return out
     
     def forward_generation_head(self, generation_features, captions, answers):

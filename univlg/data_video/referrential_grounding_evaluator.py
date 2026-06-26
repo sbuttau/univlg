@@ -315,12 +315,28 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         if type(outputs[0]) != dict:
             outputs = outputs[1]
         assert len(inputs) == 1
+        if self.cfg.LOG_NORMS:
+            registry = outputs[-1]
+            outputs.pop(-1) 
+        
         for j in range(len(outputs)):
             inputs_ = copy.copy(inputs[0])
             inputs_['sr3d_data'] = [inputs_['sr3d_data'][j]]
+            if self.cfg.LOG_NORMS and registry is not None:
+                logged_norms_jth = {
+                    layer_name: {
+                        "max_query_norm": metrics["max_query_norms"][j],
+                        "max_text_norm": metrics["max_text_norms"][j],
+                        "max_query_feature": metrics["max_query_features"][j],
+                        "max_text_feature": metrics["max_text_features"][j],
+                    }
+                    for layer_name, metrics in registry.items()
+                }
             if self.cfg.USE_GT_MASKS:
                 self.process_single_gt([inputs_], [outputs[j]])
             else:
+                if self.cfg.LOG_NORMS:
+                    outputs[j]["logged_norms"] = logged_norms_jth
                 self.process_single([inputs_], [outputs[j]])
                 
     def process_single_gt(self, inputs, outputs):
@@ -537,8 +553,11 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
                 "bbox": scanrefer_box.tolist(),
                 "iou": top1_iou,                  # Utile per debug analitico
-                "success": is_success_binary      # Il flag binario che ti serve (1 o 0)
+                "success": is_success_binary,      # Il flag binario che ti serve (1 o 0)
             })
+            if self.cfg.LOG_NORMS:
+                logs = {"logged_norms": outputs[0]["logged_norms"]}
+                self.detection_results_to_export[-1].update(logs)
         if self.cfg.VISUALIZE_REF:
             print_saliency = False
             if self.cfg.EXPLAINABLE:
