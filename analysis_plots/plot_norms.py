@@ -85,12 +85,12 @@ def main():
     # --- FIGURE 1: L2 NORM PROFILE ---
     query_norm_y = [data[k]["avg_max_query_norm"] for k in sorted_keys]
     text_norm_y = [data[k]["avg_max_text_norm"] for k in sorted_keys]
-    norm_out_path = os.path.join(args.output_dir, "grouped_max_norms_val_prova.png")
+    norm_out_path = os.path.join(args.output_dir, "grouped_max_norms_scanrefer_val_scene041.png")
     
     generate_layer_grouped_plot(
         x_indices=x_indices, y_query=query_norm_y, y_text=text_norm_y,
         sorted_keys=sorted_keys, x_labels=x_labels,
-        title="Average Max $L_2$ Norm Profile Across Decoder Sub-Layers",
+        title="Average Max $L_2$ Norm (1000 samples)",
         ylabel="Average Max $L_2$ Norm", output_path=norm_out_path
     )
     print(f"📊 Figure 1 (Norms) successfully compiled and saved to: {norm_out_path}")
@@ -98,12 +98,12 @@ def main():
     # --- FIGURE 2: ABSOLUTE FEATURE CHANNEL PROFILE ---
     query_max_y = [data[k]["avg_max_query_feature"] for k in sorted_keys]
     text_max_y = [data[k]["avg_max_text_feature"] for k in sorted_keys]
-    feat_out_path = os.path.join(args.output_dir, "grouped_max_features_val_prova.png")
+    feat_out_path = os.path.join(args.output_dir, "grouped_max_features_scanrefer_val_scene041.png")
     
     generate_layer_grouped_plot(
         x_indices=x_indices, y_query=query_max_y, y_text=text_max_y,
         sorted_keys=sorted_keys, x_labels=x_labels,
-        title="Absolute Peak Feature Channel Activation Profile Across Decoder Sub-Layers",
+        title="Max Absolute Feature Values (1000 samples)",
         ylabel="Absolute Max Feature Value", output_path=feat_out_path
     )
     print(f"📊 Figure 2 (Features) successfully compiled and saved to: {feat_out_path}")

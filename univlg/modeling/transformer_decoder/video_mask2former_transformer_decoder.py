@@ -694,6 +694,7 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                         "max_text_features": [float(x) for x in metrics["text_max"]],
                     }
                 out["logged_norms"] = compiled_summary
+                self._systematic_registry = {}  # Reset the registry after logging to avoid memory bloat
                 # Sovrascriviamo il file JSON ad ogni batch. 
                 # In questo modo, anche se interrompi il processo a metà (es. dopo 500 immagini),
                 # avrai comunque in mano la media parziale aggiornata all'ultimo istante!
