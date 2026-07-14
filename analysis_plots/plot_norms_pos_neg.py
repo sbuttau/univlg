@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # 1. Load your newly structured JSON data
-json_path = "analysis_plots/scanrefer_scannet_anchor_val_single_batched_test_results.json"
+json_path = "analysis_plots/scanrefer_scannet_anchor_val_multiple_batched_test_results.json"
 with open(json_path, "r") as f:
     data = json.load(f)
 
@@ -157,9 +157,9 @@ ax2.grid(True, linestyle=':', alpha=0.3)
 ax2.legend(loc="lower right", framealpha=0.9, fontsize=9)
 apply_synchronized_annotations(ax2, global_norm_limits)
 
-fig1.suptitle("Fine-Grained L2 Norm Trajectory across Decoder Layers (with Explicit Std Dev Bands)", fontsize=14, fontweight='bold', y=0.98)
+fig1.suptitle("Avg Max L2 Norm", fontsize=14, fontweight='bold', y=0.98)
 plt.tight_layout()
-plt.savefig("analysis_plots/grouped_max_norms_trajectory_comparison.png", dpi=300)
+plt.savefig("analysis_plots/plots/scanrefer_val_multiple_pos_neg_max_norms_trajectory_comparison.png", dpi=300)
 plt.close()
 
 
@@ -167,9 +167,9 @@ plt.close()
 fig2, (ax3, ax4) = plt.subplots(1, 2, figsize=(16, 6.5), sharey=True)
 
 # Left Side: Positives
-plot_with_enhanced_std(ax3, x_indices, pos_q_feat_mean, pos_q_feat_std, "Object Queries", "#1f77b4", 'o')
-plot_with_enhanced_std(ax3, x_indices, pos_t_feat_mean, pos_t_feat_std, "Text Tokens Context", "#ff7f0e", '^', linestyle="--")
-ax3.set_title("Positive Samples (Successful Groundings)", fontsize=12, fontweight='bold')
+plot_with_enhanced_std(ax3, x_indices, pos_q_feat_mean, pos_q_feat_std, "Object Tokens", "#1f77b4", 'o')
+plot_with_enhanced_std(ax3, x_indices, pos_t_feat_mean, pos_t_feat_std, "Text Tokens", "#ff7f0e", '^', linestyle="--")
+ax3.set_title("Positive Samples (Successful cases)", fontsize=12, fontweight='bold')
 ax3.set_ylabel("Absolute Max Feature Value", fontsize=10)
 ax3.set_xticks(x_indices)
 ax3.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
@@ -179,18 +179,18 @@ apply_synchronized_annotations(ax3, global_feat_limits)
 
 # Right Side: Negatives
 print(f"Mean: {neg_q_feat_mean}, Std: {neg_q_feat_std}")
-plot_with_enhanced_std(ax4, x_indices, neg_q_feat_mean, neg_q_feat_std, "Object Queries", "#1f77b4", 'o')
-plot_with_enhanced_std(ax4, x_indices, neg_t_feat_mean, neg_t_feat_std, "Text Tokens Context", "#ff7f0e", '^', linestyle="--")
-ax4.set_title("Negative Samples (Failed Groundings)", fontsize=12, fontweight='bold')
+plot_with_enhanced_std(ax4, x_indices, neg_q_feat_mean, neg_q_feat_std, "Query Tokens", "#1f77b4", 'o')
+plot_with_enhanced_std(ax4, x_indices, neg_t_feat_mean, neg_t_feat_std, "Text Tokens", "#ff7f0e", '^', linestyle="--")
+ax4.set_title("Negative Samples (Failure cases)", fontsize=12, fontweight='bold')
 ax4.set_xticks(x_indices)
 ax4.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
 ax4.grid(True, linestyle=':', alpha=0.3)
 ax4.legend(loc="lower right", framealpha=0.9, fontsize=9)
 apply_synchronized_annotations(ax4, global_feat_limits)
 
-fig2.suptitle("Fine-Grained Max Absolute Feature Trajectory across Decoder Layers (with Explicit Std Dev Bands)", fontsize=14, fontweight='bold', y=0.98)
+fig2.suptitle("Avg Max Absolute Features", fontsize=14, fontweight='bold', y=0.98)
 plt.tight_layout()
-plt.savefig("analysis_plots/grouped_max_feat_trajectory_comparison.png", dpi=300)
+plt.savefig("analysis_plots/plots/scanrefer_val_multiple_pos_neg_max_feat_trajectory_comparison.png", dpi=300)
 plt.close()
 
 print("📈 High-visibility variance plots updated and saved.")

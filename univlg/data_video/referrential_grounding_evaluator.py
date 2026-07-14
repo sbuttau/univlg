@@ -85,12 +85,14 @@ def visualize_pc_masks_and_bbox(
             rollout_vis = np.clip(rollout, 0, r_max)
             rollout = (rollout_vis - rollout_vis.min()) / (rollout_vis.max() - rollout_vis.min())
             # rollout = np.clip((rollout - r_min) / (r_max - r_min + 1e-8), 0, 1)
-            
+            rollout_norm = rollout.flatten()[:, None] # Shape (N, 1)
+            token_colors = color * rollout_norm
+            token_colors = np.clip(token_colors, 0, 255)#.astype(np.uint8)
             # Create a heatmap (Red for high attention, Blue/Grey for low)
             # You might need to import matplotlib.cm as cm
-            import matplotlib.pyplot as plt
-            cmap = plt.get_cmap('jet')
-            token_colors = cmap(rollout.flatten())[:, :3] * 255
+            # import matplotlib.pyplot as plt
+            # cmap = plt.get_cmap('jet')
+            # token_colors = cmap(rollout.flatten())[:, :3] * 255
             
             # Add as a separate layer for each token
             v.add_points(
@@ -172,9 +174,9 @@ def visualize_pc_masks_and_bbox(
 
         v.add_labels(
             'Labels',
-            [sr3d_data['text_caption'], sr3d_data['target_name'], sr3d_data['anchors_names']],
-            [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
-            [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
+            [sr3d_data['text_caption']], # sr3d_data['target_name'], sr3d_data['anchors_names']],
+            [np.array([1.0, 0.0, 0.0])], # np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
+            [np.array([255.0, 0.0, 0.0])], # np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
             visible=True
         )
     # v.add_labels(

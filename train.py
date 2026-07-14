@@ -97,7 +97,7 @@ from univlg.data_video.dataset_mapper_coco import (
 from univlg.global_vars import SCANNET_LIKE_DATASET
 from torch.nn.parallel import DistributedDataParallel
 from torchinfo import summary
-
+from tests.norm_hooks import NormHookManager, print_summary_for_dict
 warnings.filterwarnings("ignore")
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -720,6 +720,15 @@ class Trainer(DefaultTrainer):
             with autocast():
                 results_i = inference_on_dataset(model, data_loader, evaluator)
             results[dataset_name] = results_i
+        # store debug norms
+        # if cfg.LOG_NORMS:
+        #     final_debug_norms = {
+        #         "post_dino": model.visual_backbone.backbone.debug_norms,
+        #         "pre_FFN": {i: block.debug_norms["pre_FFN"] for i, block in enumerate(model.visual_backbone.pixel_decoder.cross_view_attn)},
+        #         "post_FFN": {i: block.debug_norms["post_FFN"] for i, block in enumerate(model.visual_backbone.pixel_decoder.cross_view_attn)},
+        #     }
+        #     torch.save(final_debug_norms, f"{cfg.TEST_RESULT_EXPORT_PATH}/{dataset_name}_visual_backbone_norms.pt")
+            
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -900,10 +909,35 @@ def main(args):
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS, resume=args.resume
         )
+        if cfg.HOOK_NORMS:
+            hook_manager = NormHookManager(model)
+            hook_manager.attach()
+            hook_manager.attach_dino_hook() 
         res = Trainer.test(cfg, model)
         if cfg.TEST.AUG.ENABLED: raise NotImplementedError
         if wandb.run is not None:
             wandb.finish()
+        if cfg.HOOK_NORMS:
+            hook_manager.detach()
+
+            INCLUDE_PATTERNS = [
+                "dinov2.inner.norm",
+                "visual_backbone.pixel_decoder.cross_view_attn",  # fusione multi-view nel pixel decoder
+                "mask_decoder.transformer_cross_attention_layers",
+                "mask_decoder.transformer_self_attention_layers",
+                "mask_decoder.transformer_ffn_layers",
+                "mask_decoder.vis_output_cross_attn",
+                "mask_decoder.vis_output_ffn",
+            ]
+
+            EXCLUDE_PATTERNS = [
+                "pe_layer",  # positional embedding, escluso per ora
+            ]
+            filtered = hook_manager.select(INCLUDE_PATTERNS, EXCLUDE_PATTERNS)
+            from tests.norm_hooks import print_summary_for_dict
+            print_summary_for_dict(filtered)
+            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms.pt")
+
         return res
 
     trainer = Trainer(cfg)

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # 1. Load your newly structured JSON data
-json_path = "analysis_plots/scanrefer_scannet_anchor_val_single_batched_test_results.json"
+json_path = "analysis_plots/scanrefer_scannet_val_scene0046_debug_batched_test_results.json"
 with open(json_path, "r") as f:
     data = json.load(f)
 
@@ -110,7 +110,7 @@ ax1.legend(loc="lower right", framealpha=0.9, fontsize=9)
 apply_layer_grouping_annotations(ax1, all_q_mean, all_t_mean)
 
 plt.tight_layout()
-plt.savefig("analysis_plots/unified_max_norms_trajectory.png", dpi=300)
+plt.savefig("analysis_plots/plots/scene46_max_norms_trajectory.png", dpi=300)
 plt.close()
 
 
@@ -134,7 +134,7 @@ ax2.legend(loc="lower right", framealpha=0.9, fontsize=9)
 apply_layer_grouping_annotations(ax2, all_q_feat_mean, all_t_feat_mean)
 
 plt.tight_layout()
-plt.savefig("analysis_plots/unified_max_feat_trajectory.png", dpi=300)
+plt.savefig("analysis_plots/plots/scene46_max_feat_trajectory.png", dpi=300)
 plt.close()
 
 print("📊 Global unified plots generated and saved to 'analysis_plots/' ")

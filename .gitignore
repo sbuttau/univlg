@@ -201,3 +201,6 @@ pytorch3d/
 *.png
 
 *.lock
+
+analysis_plots/*.json
+analysis_plots/*.pt

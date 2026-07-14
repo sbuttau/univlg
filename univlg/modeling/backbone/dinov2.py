@@ -386,7 +386,6 @@ class DINOv2(Backbone):
         self.checkpoint_name = f"{version}"
         self.unfreeze_layers = cfg.DINO_UNFREEZE_LAYERS
         self.cfg = cfg
-
         assert cfg.MODEL.FREEZE_BACKBONE == False
         assert cfg.USE_GENERIC_DINO
 
@@ -544,8 +543,11 @@ class DINOv2(Backbone):
                 nn.init.constant_(block[-1].weight, 0)
                 nn.init.constant_(block[-1].bias, 0)
 
+        self.debug_norms = [[] for _ in range(len(self.multilayers))]
+
     def forward(self, x, x_xyz=None, x_p2v=None, shape=None, decoder_3d=False):
         assert x.min() >= -1e-3 and x.max() <= 1 + 1e-3 and x.ndim == 4
+
         with torch.no_grad() if self.cfg.DINO_GENERIC_DISABLE_INFERENCE_MODE else torch.inference_mode():
             with torch.autocast(x.device.type, dtype=self.dtype):
                 p_images = self.preprocessor(x)
@@ -574,12 +576,16 @@ class DINOv2(Backbone):
         ):
             all_feat_3d = []
             num_skip = 0
+            # if self.cfg.LOG_NORMS:
+            #     debug_norms = {"pre_fusion": [], "post_cross_view": [], "post_residual": []}
             for i in range(len(self.multilayers)):
                 # Project x
                 if self.cfg.PANET:
                     x = features[i]
                 else:
                     x = features[i].permute(0, 2, 3, 1)
+                if self.cfg.LOG_NORMS:
+                    self.debug_norms[i].append(x.norm(dim=-1).detach().cpu())  # per token, per questa scena
                 x2 = self.token_to_trans[str(i)](x)
                 
                 if not self.cfg.PANET:
@@ -629,9 +635,9 @@ class DINOv2(Backbone):
 
                     # Skip connection
                     x = modulate(x, x2_shift, x2_scale)
-                
-                index += 1
 
+                index += 1
+                # check x has changed from the beginning
                 all_feat_3d.append(x)
 
             outputs = all_feat_3d

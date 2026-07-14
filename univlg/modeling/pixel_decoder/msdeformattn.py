@@ -469,6 +469,11 @@ class MSDeformAttnPixelDecoder(nn.Module):
         # to make the top-down computation in forward clearer.
         self.lateral_convs = lateral_convs[::-1]
         self.output_convs = output_convs[::-1]
+        
+        self.debug_norms = {
+            "pre_cross_view": [],
+            "post_cross_view": []
+        }
 
     def init_pe(self):
         N_steps = self.conv_dim // 2
@@ -605,6 +610,8 @@ class MSDeformAttnPixelDecoder(nn.Module):
             for i in range(self.transformer_num_feature_levels):
                 mv_data = {}
                 mv_data["multi_scale_p2v"] = [multi_scale_p2v[1 if self.cfg.FORCE_VIT_XYZ_SCALE else i]]
+                if self.cfg.LOG_NORMS:
+                    self.debug_norms["pre_cross_view"].append(out[i].norm(dim=1).detach().cpu())  # per token
                 out_new.append(
                     self.cross_view_attn[i](
                         feature_list=[out[i]],
@@ -614,6 +621,8 @@ class MSDeformAttnPixelDecoder(nn.Module):
                         voxelize=self.cfg.INPUT.VOXELIZE,
                     )[0]
                 )
+                if self.cfg.LOG_NORMS:
+                    self.debug_norms["post_cross_view"].append(out_new[-1].norm(dim=1).detach().cpu())  # per token
             out = out_new
 
         # append `out` with extra FPN levels

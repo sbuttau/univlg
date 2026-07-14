@@ -5,7 +5,7 @@ import numpy as np
 from collections import defaultdict
 
 # 1. Load your newly structured JSON data
-json_path = "analysis_plots/scanrefer_scannet_anchor_val_single_batched_test_results.json"
+json_path = "analysis_plots/nr3d_ref_scannet_anchor_val_single_batched_test_results.json"
 with open(json_path, "r") as f:
     data = json.load(f)
 
@@ -120,7 +120,7 @@ plot_base_sublayers(ax, t_norm_mean, t_norm_std, color="#ff7f0e", label="Text To
 apply_common_layout(ax, norm_ylim, "Avg Max L2 Norms", "L2 Norm Value")
 ax.legend(loc="lower right", framealpha=0.9, fontsize=9)
 plt.tight_layout()
-plt.savefig("analysis_plots/sublayers_only_norms.png", dpi=300)
+plt.savefig("analysis_plots/plots/nr3d_sublayers_only_norms.png", dpi=300)
 plt.close()
 
 # 📊 2. L2 NORMS (Sublayers Background + Macro Trend Line)
@@ -132,7 +132,7 @@ plot_macro_trend(ax, t_norm_mean, color="#e6550d", label="Text Tokens (mean)")
 apply_common_layout(ax, norm_ylim, "Avg Max L2 Norms", "L2 Norm Value")
 ax.legend(loc="lower right", framealpha=0.9, fontsize=9, ncol=2)
 plt.tight_layout()
-plt.savefig("analysis_plots/combined_sublayers_macro_norms.png", dpi=300)
+plt.savefig("analysis_plots/plots/nr3d_combined_sublayers_macro_norms.png", dpi=300)
 plt.close()
 
 
@@ -143,7 +143,7 @@ plot_base_sublayers(ax, t_feat_mean, t_feat_std, color="#ff7f0e", label="Text To
 apply_common_layout(ax, feat_ylim, "Avg Max Absolute Features", "Absolute Max Feature Value")
 ax.legend(loc="lower right", framealpha=0.9, fontsize=9)
 plt.tight_layout()
-plt.savefig("analysis_plots/sublayers_only_features.png", dpi=300)
+plt.savefig("analysis_plots/plots/nr3d_sublayers_only_features.png", dpi=300)
 plt.close()
 
 # 📊 4. ABSOLUTE FEATURES (Sublayers Background + Macro Trend Line)
@@ -155,7 +155,7 @@ plot_macro_trend(ax, t_feat_mean, color="#e6550d", label="Text Tokens (mean)")
 apply_common_layout(ax, feat_ylim, "Avg Max Absolute Features", "Absolute Max Feature Value")
 ax.legend(loc="lower right", framealpha=0.9, fontsize=9, ncol=2)
 plt.tight_layout()
-plt.savefig("analysis_plots/combined_sublayers_macro_features.png", dpi=300)
+plt.savefig("analysis_plots/plots/nr3d_combined_sublayers_macro_features.png", dpi=300)
 plt.close()
 
-print("🏁 Execution complete. 4 standalone plots saved in 'analysis_plots/'. Scales are strictly locked.")
+print("🏁 Execution complete. 4 standalone plots saved in 'analysis_plots/plots/'. Scales are strictly locked.")
