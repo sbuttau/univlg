@@ -141,7 +141,7 @@ class NormHookManager:
                         ambiguous = True
                     channel_dim = next((d for d in candidate_dims if d != 0), candidate_dims[0])
 
-                norms = x.norm(dim=channel_dim)
+                norms = x.float().norm(dim=channel_dim)
 
                 # Salviamo, insieme alla norma, i metadati per poter verificare
                 # a posteriori se la scelta e' stata ambigua o no, senza dover
@@ -179,7 +179,7 @@ class NormHookManager:
         def hook(module, inputs, output):
             with torch.no_grad():
                 for i, feat in enumerate(output):
-                    norms = feat.norm(dim=1).detach().cpu()  # canali in posizione 1 (NCHW)
+                    norms = feat.float().norm(dim=1).detach().cpu()  # canali in posizione 1 (NCHW)
                     self.data[f"{key_prefix}/L{i}"].append(norms)
 
         handle = dino_module.register_forward_hook(hook)
