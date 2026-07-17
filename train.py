@@ -928,6 +928,7 @@ def main(args):
                 "mask_decoder.transformer_ffn_layers",
                 "mask_decoder.vis_output_cross_attn",
                 "mask_decoder.vis_output_ffn",
+                "mask_decoder.lang_encoder.text_encoder"
             ]
 
             EXCLUDE_PATTERNS = [
@@ -936,7 +937,8 @@ def main(args):
             filtered = hook_manager.select(INCLUDE_PATTERNS, EXCLUDE_PATTERNS)
             from tests.norm_hooks import print_summary_for_dict
             print_summary_for_dict(filtered)
-            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms.pt")
+            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
+            print(f"Saved hook norms to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
 
         return res
 

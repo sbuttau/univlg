@@ -278,7 +278,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     data = torch.load(args.norms_file, map_location="cpu")
-
+    print(f"Loaded norms data from {args.norms_file}, {len(data)} modules found.")
     plot_visual_backbone(data, out_dir, n_pixel_decoder_blocks=args.n_pixel_decoder_blocks)
     print()
     plot_mask_decoder(data, out_dir, n_layers=args.n_mask_decoder_layers)
