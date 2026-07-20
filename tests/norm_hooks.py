@@ -155,6 +155,25 @@ class NormHookManager:
                 })
 
         return hook
+    
+    def attach_language_encoder_mask_hook(self, language_encoder_path="mask_decoder.lang_encoder", key="text_attention_mask"):
+        """
+        Cattura la attention_mask restituita come secondo elemento dell'output
+        di LanguageEncoder.forward(), senza toccare il codice del forward.
+        """
+        language_encoder_module = self.model
+        for part in language_encoder_path.split("."):
+            language_encoder_module = getattr(language_encoder_module, part)
+
+        def hook(module, inputs, output):
+            with torch.no_grad():
+                # output = (text_feats_proiettati, attention_mask)
+                _, attn_mask = output
+                self.data[key].append(attn_mask.detach().cpu())
+
+        handle = language_encoder_module.register_forward_hook(hook)
+        self.handles.append(handle)
+        print(f"Hook mask registrato su '{language_encoder_path}' ({key}).")
 
     def attach_dino_hook(self, dino_module_path="visual_backbone.backbone.dinov2", key_prefix="post_dino"):
         """

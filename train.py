@@ -913,6 +913,7 @@ def main(args):
             hook_manager = NormHookManager(model)
             hook_manager.attach()
             hook_manager.attach_dino_hook() 
+            hook_manager.attach_language_encoder_mask_hook()
         res = Trainer.test(cfg, model)
         if cfg.TEST.AUG.ENABLED: raise NotImplementedError
         if wandb.run is not None:
@@ -939,7 +940,11 @@ def main(args):
             print_summary_for_dict(filtered)
             torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
             print(f"Saved hook norms to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
-
+            mask_data = hook_manager.data.get("text_attention_mask", [])
+            assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder...norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder...norm2'])}"
+            assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2'])}"
+            torch.save(mask_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks.pt")
+            print(f"Saved attention masks to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks.pt")
         return res
 
     trainer = Trainer(cfg)
