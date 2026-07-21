@@ -914,6 +914,8 @@ def main(args):
             hook_manager.attach()
             hook_manager.attach_dino_hook() 
             hook_manager.attach_language_encoder_mask_hook()
+            hook_manager.attach_topk_abs_hooks(name_filter="lang_encoder")
+            #hook_manager.attach_raw_hooks(name_filter="lang_encoder")
         res = Trainer.test(cfg, model)
         if cfg.TEST.AUG.ENABLED: raise NotImplementedError
         if wandb.run is not None:
@@ -929,22 +931,31 @@ def main(args):
                 "mask_decoder.transformer_ffn_layers",
                 "mask_decoder.vis_output_cross_attn",
                 "mask_decoder.vis_output_ffn",
-                "mask_decoder.lang_encoder.text_encoder"
             ]
 
             EXCLUDE_PATTERNS = [
                 "pe_layer",  # positional embedding, escluso per ora
+                "topk_abs/",   # difensivo: mai mischiarli nel file delle norme
+                #"raw/",
             ]
             filtered = hook_manager.select(INCLUDE_PATTERNS, EXCLUDE_PATTERNS)
             from tests.norm_hooks import print_summary_for_dict
-            print_summary_for_dict(filtered)
-            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
-            print(f"Saved hook norms to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text.pt")
+            # print_summary_for_dict(filtered)
+            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text_5.pt")
+            print(f"Saved hook norms to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text_5.pt")
             mask_data = hook_manager.data.get("text_attention_mask", [])
-            assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder...norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder...norm2'])}"
+            # assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder...norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder...norm2'])}"
             assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2'])}"
-            torch.save(mask_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks.pt")
-            print(f"Saved attention masks to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks.pt")
+            torch.save(mask_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks_5.pt")
+            print(f"Saved attention masks to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks_5.pt")
+            # --- top-k e raw, ciascuno nel suo file ---
+            topk_abs_data = hook_manager.select(["topk_abs/"])
+            torch.save(topk_abs_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_topk_abs_5.pt")
+            print(f"Saved top-k ({len(topk_abs_data)} modules)")
+
+            # raw_data = hook_manager.select(["raw/"])
+            # torch.save(raw_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_raw_feat_values_5.pt")
+            # print(f"Saved raw ({len(raw_data)} modules)")
         return res
 
     trainer = Trainer(cfg)

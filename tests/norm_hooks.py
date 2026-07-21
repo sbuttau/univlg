@@ -175,6 +175,70 @@ class NormHookManager:
         self.handles.append(handle)
         print(f"Hook mask registrato su '{language_encoder_path}' ({key}).")
 
+    def attach_topk_abs_hooks(self, name_filter=None, k=10, key_prefix="topk_abs"):
+        """
+        Come attach(), ma salva per ogni token i top-k |h| con indici di
+        dimensione + mediana di |h|, invece della norma. Riusa la stessa
+        deduzione della channel dim di _make_hook.
+        """
+        n_hooked = 0
+        for name, module in self.model.named_modules():
+            if not isinstance(module, nn.LayerNorm):
+                continue
+            if name_filter is not None and name_filter not in name:
+                continue
+            expected_c = module.normalized_shape[-1]
+
+            def make_hook(module_name, expected_c):
+                def hook(m, inputs):
+                    with torch.no_grad():
+                        x = inputs[0]
+                        candidate_dims = [d for d in range(x.dim()) if x.shape[d] == expected_c]
+                        if not candidate_dims:
+                            return
+                        if x.shape[-1] == expected_c and len(candidate_dims) == 1:
+                            ch = x.dim() - 1
+                        else:
+                            ch = next((d for d in candidate_dims if d != 0), candidate_dims[0])
+
+                        absh = x.float().abs().movedim(ch, -1)   # canali in coda
+                        top_vals, top_dims = absh.topk(k, dim=-1)
+                        self.data[f"{key_prefix}/{module_name}"].append({
+                            "top_vals": top_vals.detach().cpu(),
+                            "top_dims": top_dims.detach().cpu(),
+                            "median_abs": absh.median(dim=-1).values.detach().cpu(),
+                            "input_shape": tuple(x.shape),
+                            "channel_dim_used": ch,
+                        })
+                return hook
+
+            self.handles.append(module.register_forward_pre_hook(make_hook(name, expected_c)))
+            n_hooked += 1
+        print(f"Hook top-k registrati su {n_hooked} LayerNorm.")
+    
+    def attach_raw_hooks(self, name_filter, max_scenes=3, key_prefix="raw"):
+        """Salva il tensore grezzo pre-norm (per plot 3D stile Sun et al.),
+        solo per le prime max_scenes chiamate di ciascun modulo."""
+        n_hooked = 0
+        for name, module in self.model.named_modules():
+            if not isinstance(module, nn.LayerNorm):
+                continue
+            if name_filter not in name:
+                continue
+
+            def make_hook(module_name):
+                def hook(m, inputs):
+                    key = f"{key_prefix}/{module_name}"
+                    if len(self.data[key]) >= max_scenes:
+                        return
+                    with torch.no_grad():
+                        self.data[key].append(inputs[0].detach().float().cpu())
+                return hook
+
+            self.handles.append(module.register_forward_pre_hook(make_hook(name)))
+            n_hooked += 1
+        print(f"Hook raw registrati su {n_hooked} LayerNorm (max {max_scenes} scene).")
+
     def attach_dino_hook(self, dino_module_path="visual_backbone.backbone.dinov2", key_prefix="post_dino"):
         """
         Registra un forward hook (non pre-hook) sul wrapper DINOv2, per
