@@ -64,7 +64,7 @@ RUN python -c "import nltk; nltk.download('stopwords')"
 RUN pip install git+https://github.com/waspinator/pycococreator.git
 RUN pip install transformers==4.44
 COPY ./libs ./libs
-ENV TORCH_CUDA_ARCH_LIST="6.1"
+ENV TORCH_CUDA_ARCH_LIST="6.1;7.0;7.5;8.0;8.6;8.9"
 WORKDIR /workspaces/univlg/libs/pointops2
 RUN pip install --no-build-isolation -e . 
 

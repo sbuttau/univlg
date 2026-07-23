@@ -36,6 +36,33 @@ _PREDEFINED_SPLITS_REF = {
     "scanrefer_scannet_anchor_train_eval_single": ("ScanRefer_filtered_train_ScanEnts3D_train_eval.csv"),
     "scanrefer_scannet_anchor_debug_single": ("ScanRefer_filtered_train_ScanEnts3D_debug.csv"),
     "scanrefer_scannet_test_single": ("ScanRefer_filtered_test.csv"),
+    # TESTING DIFFERENT SENTENCE LENGTHS
+    # unique
+    "scanrefer_scannet_val_sentence_test_one" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent.csv"),
+    "scanrefer_scannet_val_sentence_test_two" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv"),
+    "scanrefer_scannet_val_sentence_test_three" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent.csv"),
+    "scanrefer_scannet_val_sentence_test_all" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all.csv"),
+    # multiple
+    "scanrefer_scannet_val_sentence_test_one_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_two_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_three_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent_multiple.csv"),
+    "scanrefer_scannet_val_sentence_test_all_multiple" : ("ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all_multiple.csv"),
+    # ONE SCENE DEBUG
+    "scanrefer_scannet_val_scene0329_debug" : ("scene00329_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0329_modified" : ("scene0329_00_modified.csv"),
+    "scanrefer_scannet_val_scene0329_redchair" : ("scene0329_00_redchair.csv"),
+    "scanrefer_scannet_val_scene0329_notredchair" : ("scene0329_00_notredchair.csv"),
+    "scanrefer_scannet_val_scene0329_withoutaredchair" : ("scene0329_00_withoutaredchair.csv"),
+    "scanrefer_scannet_val_scene0329_monitor" : ("scene0329_00_monitor.csv"),
+    "scanrefer_scannet_val_scene0329_blackchair" : ("scene0329_00_blackchair.csv"),
+    "scanrefer_scannet_val_scene0307_debug" : ("scene0307_00_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0355_debug" : ("scene0355_00_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0355_monitor" : ("scene0355_00_monitor.csv"),
+    "scanrefer_scannet_val_scene0046_debug" : ("scene0046_00_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0081_debug" : ("scene0081_00_scanrefer_val.csv"),
+    "scanrefer_scannet_val_scene0081_nostool" : ("scene0081_00_blackchair.csv"),
+    "scanrefer_scannet_val_scene0081_redstool" : ("scene0081_00_redstool.csv"),
+
 
     'scanqa_ref_scannet_train_single': ('ScanQA_v1.0_train.json'),
     'scanqa_ref_scannet_val_single': ('ScanQA_v1.0_val.json'),

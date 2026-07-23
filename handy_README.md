@@ -1,4 +1,11 @@
 # Where things are and how to find them
+# Container
+```bash
+export HOST_REPO="/mnt/projects/dm/warm_up/u0205/univlg"
+singularity exec --nv --bind "$HOST_REPO:/workspaces" "univlg.sif" bash
+source ~/.venvs/univlg/bin/activate
+export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/torch/lib:$LD_LIBRARY_PATH
+```
 
 ## Datasets and dataloaders
 dataset classes are in `univlg/data_video/dataset_mapper_language.py`
@@ -29,9 +36,8 @@ NOTE: model alone takes 2GB, running the code on 2 scenes takes ~25GB RAM, ~5GB 
 
 ```bash
 export CKPT_PATH="ckpts/univlg.pth"
-
-export SCANNET_DATA_DIR="/workspace/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
-export SCANNET_200_DATA_DIR="/workspace/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
 source scripts/setup.sh
 configure_local
 NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
@@ -40,12 +46,11 @@ TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
 SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
 SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
 VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-DATASETS.TRAIN "('scanrefer_scannet_anchor_train_single',)" \
-DATASETS.TEST "('scanrefer_scannet_anchor_val_single_batched',)" \
-SAVE_DATA_SAMPLE False
-# SAVE_DATA_SAMPLE True
+DATASETS.TEST "('scanrefer_scannet_val_scene0329_debug_batched',)" \
+SAVE_DATA_SAMPLE False \
 ```
 TODO: need to check if RAM loading can be lightened
 
@@ -54,9 +59,9 @@ Once the data is stored, you can run a standalone eval to visualize your results
 export CKPT_PATH="ckpts/univlg.pth"
 source scripts/setup.sh
 configure_local
-USE_STANDALONE=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+USE_STANDALONE=1 EXPLAINABLE=0 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
 USE_AUTO_NOUN_DETECTION False \
-USE_SEGMENTS False
+USE_SEGMENTS False 
 ```
 it will save an output folder with the instructions to open the visualizer online (you should do `cd to your folder` and then `python -m http.server 6008` or to your favorite port).
 
@@ -71,3 +76,161 @@ Options for datasets are:
 ## Model components
 - vision backbone (DINOv2): `UniVLGVisualBackbone` (`univlg/modeling/visual_backbone.py`)
 - decoder: `VideoMultiScaleMaskedTransformerDecoder` (`univlg/modeling/transformer_decoder/video_mask2former_transformer_decoder.py`)
+- JINA text tokenizer: `univlg/data_video/dataset_mapper_language.py: 157
+- JINA text encoder:  `univlg/data_video/dataset_mapper_language.py: 65
+
+## Text length experiment
+Parse dataset:
+```bash
+python data_preparation/parse_dataset.py
+```
+
+it will divide descriptions by sentences and store respective files in the `data/` folder:
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v1_1sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v2_2sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v3_3sent.csv`
+- `data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_long_v4_all.csv`
+
+Then, run eval for each split:
+
+
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+DATASETS.TEST "('scanrefer_scannet_val_sentence_test_one_batched',)" \ //<--- change this
+# SAVE_DATA_SAMPLE False \ <--- optional: don't need to save data path
+# DATA_SAMPLE_PATH ckpts/misc/long_sentence_test/one_sentence
+```
+You will find visualizations inside `outputs/visualizations` (ex. `outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched`).
+
+Next, build the html file index:
+```bash
+python make_scene_browser.py outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched
+```
+This will create a file `index.html` in the visualization folder.
+
+```bash
+cd outputs/visualizations/scanrefer_scannet_val_sentence_test_one_batched
+python -m http.server 6009 # or whichever port you prefer
+```
+
+## Saliency maps (negations)
+Extract one scene from the dataset using the script:
+
+```bash
+python tests/extract_one_scene.py --annotation_file data/refer_it_3d/ScanRefer_filtered_val_ScanEnts3D_val_negations_only.py --scene_id scene0307_00
+```
+
+The file `data/refer_it_3d/scene0307_00_scanrefer_val.csv` will be stored. 
+
+Make sure you add the dataset with one sample in the registered datasets (in `univlg/data_video/datasets/load_sr3d.py`), and add it in the main.sh file. Run the inference on the sample to store the data sample and visualize the prediction:
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=0 NUM_DATALOADERS=0 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+EXPLAINABLE True \
+CHEFER True \
+LOG_NORMS False \
+SAVE_TEST_RESULTS False \
+TEST_RESULT_EXPORT_PATH analysis_plots \
+HOOK_NORMS True
+SAVE_DATA_SAMPLE True \ 
+DATA_SAMPLE_PATH ckpts/misc/
+```
+
+To visualize BEV of the scene with multiple possible tokens to query,first run the standalone_eval_attention.py:
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+source scripts/setup.sh
+configure_local
+USE_STANDALONE=1 EXPLAINABLE=1 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+USE_AUTO_NOUN_DETECTION False \
+USE_SEGMENTS False 
+```
+
+This will save the pth of the scene like "/workspaces/univlg/outputs/scene_0_raw.pth".
+Then run the player2.py
+
+```bash
+streamlit run player2.py
+```
+
+(make sure the script is taking the correct file inside. it is hardcoded)
+
+To visualize attention maps:
+```bash
+streamlit run player_attn_weights.py -- --file outputs/investigation/scene_scene0355_00_data.pth
+```
+
+## Attention sinks
+eval script
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=0 NUM_DATALOADERS=0 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+EXPLAINABLE True \
+CHEFER True \
+LOG_NORMS False \
+SAVE_TEST_RESULTS False \
+TEST_RESULT_EXPORT_PATH tests \
+HOOK_NORMS True 
+```
+
+plot text encoder stats
+```bash
+ python analyze_sink_persistence.py --data scanrefer_scannet_anchor_val_single_batched_hook_norms_text.pt --masks scanrefer_scannet_anchor_val_single_batched_attention_masks.pt
+ ```
+
+```bash
+python plot_backbone_and_decoder.py --skip_visual_backbone --skip_mask_decoder     --text_norms_file scanrefer_scannet_anchor_val_single_batched_hook_norms_text.pt     --out_dir ./plots
+```
+
+plot visual backbone and pixel decoder
+ ```bash
+ python plot_backbone_and_decoder.py --norms scanrefer_scannet_anchor_val_single_batched_hook_norms.pt --out_dir plots/
+ ```
+
+ violin plots
+ ```bash
+ python plot_norm_distributions.py --norms_file scanrefer_scannet_anchor_val_single_batched_hook_norms.pt --out_dir plots/
+ ```
+
+ text encoder median vs top 3 max norms per layer (inside `tests/`)
+ ```bash
+ python plot_massive_per_layer.py --topk_data scanrefer_scannet_anchor_val_single_batched_topk_abs_1000.pt --masks scanrefer_scannet_anchor_val_
+single_batched_attention_masks_1000.pt --which both --out_dir ./plots
+```

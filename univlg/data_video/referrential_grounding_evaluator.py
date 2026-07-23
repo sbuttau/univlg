@@ -43,7 +43,8 @@ def visualize_pc_masks_and_bbox(
     pred_pcs, gt_bbox, pred_bbox,
     data_dir=None, sample_name=None, inputs=None,
     gt_anchor_pcs=None, gt_anchor_bboxs=None, sr3d_data=None,
-    anchor_pcs=None, anchor_bboxs=None
+    anchor_pcs=None, anchor_bboxs=None, saliency_colors=None,
+    saliency_data=None, word_attn=None
 ):
     """
     Input
@@ -62,6 +63,46 @@ def visualize_pc_masks_and_bbox(
                  visible=True,
                  point_size=25)
 
+    if saliency_colors is not None:
+        if saliency_colors.max() <= 1.0:
+            saliency_colors = (saliency_colors * 255).astype(np.uint8)
+            
+        v.add_points("Saliency Map", pc,
+                     colors=saliency_colors,
+                     alpha=0.9,
+                     visible=False, 
+                     point_size=30) 
+        
+    # Interactive Word Saliency
+    if word_attn is not None:
+        for token, rollout in word_attn.items():
+            # rollout is expected to be N or N x 1
+            # We map the rollout values to a colormap (e.g., JET or Viridis)
+            
+            # Normalize rollout
+            r_min = np.percentile(rollout, 10)
+            r_max = np.percentile(rollout, 98)
+            rollout_vis = np.clip(rollout, 0, r_max)
+            rollout = (rollout_vis - rollout_vis.min()) / (rollout_vis.max() - rollout_vis.min())
+            # rollout = np.clip((rollout - r_min) / (r_max - r_min + 1e-8), 0, 1)
+            rollout_norm = rollout.flatten()[:, None] # Shape (N, 1)
+            token_colors = color * rollout_norm
+            token_colors = np.clip(token_colors, 0, 255)#.astype(np.uint8)
+            # Create a heatmap (Red for high attention, Blue/Grey for low)
+            # You might need to import matplotlib.cm as cm
+            # import matplotlib.pyplot as plt
+            # cmap = plt.get_cmap('jet')
+            # token_colors = cmap(rollout.flatten())[:, :3] * 255
+            
+            # Add as a separate layer for each token
+            v.add_points(
+                f"Attn: {token}", 
+                pc,
+                colors=token_colors.astype(np.uint8),
+                alpha=0.9,
+                visible=False,  # Important: Start hidden so they don't overlap
+                point_size=30
+            )
      # add gt masks
     masks_colors = [np.tile(np.array([0, 255, 0])[None], (pc.shape[0], 1)) for pc in gt_pcs]
     v.add_points(
@@ -71,7 +112,13 @@ def visualize_pc_masks_and_bbox(
         visible=False,
         point_size=point_size
     )
+    # mask_bool = (saliency_data['target_mask'] > 0.5).flatten()
+    # mask_colors = np.full((pc.shape[0], 3), 50, dtype=np.uint8)
+    # mask_colors[mask_bool] = [255, 0, 0]
 
+    # v.add_points("Target Mask Check", pc, 
+    #          colors=mask_colors.astype(np.uint8),
+    #          visible=True)
     # add pred masks
     dists = knn_points(torch.from_numpy(pc[None]).cuda(), torch.from_numpy(pc[None]).cuda(), K=8)[0][0, :, 1:].mean(1)
     threshold = dists.mean() + 2 * dists.std()
@@ -127,12 +174,18 @@ def visualize_pc_masks_and_bbox(
 
         v.add_labels(
             'Labels',
-            [sr3d_data['text_caption'], sr3d_data['target_name'], sr3d_data['anchors_names']],
-            [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
-            [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
+            [sr3d_data['text_caption']], # sr3d_data['target_name'], sr3d_data['anchors_names']],
+            [np.array([1.0, 0.0, 0.0])], # np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
+            [np.array([255.0, 0.0, 0.0])], # np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
             visible=True
         )
-
+    # v.add_labels(
+    #             'Labels',
+    #             [sr3d_data['text_caption'], '',''],
+    #             [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
+    #             [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
+    #             visible=True
+    #         )
     if anchor_pcs is not None:
         anchor_colors = get_color(len(anchor_pcs))
         for i in range(0, min(len(gt_anchor_pcs), len(anchor_pcs))):
@@ -158,11 +211,27 @@ def visualize_pc_masks_and_bbox(
         data_dir = os.environ['OUTPUT_DIR_PREFIX'] + '/debug/bdetr2_visualizations'
 
     data_dir = Path(f"{data_dir}/{inputs[0]['dataset_name']}/{sample_name.replace(' ', '_')[:100]}")
-    if not data_dir.exists():
-        data_dir.parent.mkdir(parents=True, exist_ok=True)
+    if data_dir is None:
+        data_dir = os.environ['OUTPUT_DIR_PREFIX'] + '/debug/bdetr2_visualizations'
+
+    data_dir = Path(f"{data_dir}/{inputs[0]['dataset_name']}/{sample_name.replace(' ', '_')[:100]}")
+    # if not data_dir.exists():
+    data_dir.mkdir(parents=True, exist_ok=True)
     
+    # store caption
+    if sr3d_data is not None and 'text_caption' in sr3d_data:
+        caption_full = sr3d_data['text_caption']
+            
+        metadata = {
+            "caption": caption_full,
+            "target": sr3d_data.get('target_name', ''),
+            "anchors": sr3d_data.get('anchors_names', [])
+        }
     print(f"Saved to {data_dir}")
     v.save(str(data_dir))
+    with open(data_dir / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4)
+    print(f"saved metadata")
 
 def get_color(max_value: int, colormap='spring'):
     colormap = plt.get_cmap('spring')  # Pink is 0, Yellow is 1
@@ -242,17 +311,34 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         self.detection_results = []
         self.mask_detection_results = []
         self.num_viz = 0
+        self.detection_results_to_export = []
 
     def process(self, inputs, outputs):
         if type(outputs[0]) != dict:
             outputs = outputs[1]
         assert len(inputs) == 1
+        if self.cfg.LOG_NORMS:
+            registry = outputs[-1]
+            outputs.pop(-1) 
+        
         for j in range(len(outputs)):
             inputs_ = copy.copy(inputs[0])
             inputs_['sr3d_data'] = [inputs_['sr3d_data'][j]]
+            if self.cfg.LOG_NORMS and registry is not None:
+                logged_norms_jth = {
+                    layer_name: {
+                        "max_query_norm": metrics["max_query_norms"][j],
+                        "max_text_norm": metrics["max_text_norms"][j],
+                        "max_query_feature": metrics["max_query_features"][j],
+                        "max_text_feature": metrics["max_text_features"][j],
+                    }
+                    for layer_name, metrics in registry.items()
+                }
             if self.cfg.USE_GT_MASKS:
                 self.process_single_gt([inputs_], [outputs[j]])
             else:
+                if self.cfg.LOG_NORMS:
+                    outputs[j]["logged_norms"] = logged_norms_jth
                 self.process_single([inputs_], [outputs[j]])
                 
     def process_single_gt(self, inputs, outputs):
@@ -386,25 +472,25 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 top_bboxs.append(_set_axis_align_bbox(cur_pc))
         top_bboxs = np.array(top_bboxs)
 
-        if self.cfg.TEST_DATASET_INFERENCE:
-            assert len(inputs[0]['sr3d_data'])
-            if pred_pcs[0].shape[0] > 0:
-                max_ = np.max(pred_pcs[0], axis=0)
-                min_ = np.min(pred_pcs[0], axis=0)
-            else:
-                max_ = np.array([0.0, 0.0, 0.0])
-                min_ = np.array([0.0, 0.0, 0.0])
+        # if self.cfg.TEST_DATASET_INFERENCE or self.cfg.SAVE_TEST_RESULTS:
+        #     assert len(inputs[0]['sr3d_data'])
+        #     if pred_pcs[0].shape[0] > 0:
+        #         max_ = np.max(pred_pcs[0], axis=0)
+        #         min_ = np.min(pred_pcs[0], axis=0)
+        #     else:
+        #         max_ = np.array([0.0, 0.0, 0.0])
+        #         min_ = np.array([0.0, 0.0, 0.0])
 
-            center = (max_ + min_) / 2.0
-            box_size = max_ - min_
-            scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
-            self.detection_results.append({
-                "scene_id": inputs[0]['image_id'],
-                "object_id": inputs[0]['sr3d_data'][0]['target_id'],
-                "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
-                "bbox": scanrefer_box.tolist(),
-            })
-            return
+        #     center = (max_ + min_) / 2.0
+        #     box_size = max_ - min_
+        #     scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
+        #     self.detection_results_to_export.append({
+        #         "scene_id": inputs[0]['image_id'],
+        #         "object_id": inputs[0]['sr3d_data'][0]['target_id'],
+        #         "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
+        #         "bbox": scanrefer_box.tolist(),
+        #     })
+            # return
 
         target_id = inputs[0]['sr3d_data'][0]['target_id']
 
@@ -442,8 +528,63 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 gt_pc = np.array([[0, 0, 0]])
             else:
                 raise e
+        
+        # --- EXPORT RESULTS ---
+        if self.cfg.TEST_DATASET_INFERENCE or self.cfg.SAVE_TEST_RESULTS:
+            assert len(inputs[0]['sr3d_data'])
+            if pred_pcs[0].shape[0] > 0:
+                max_ = np.max(pred_pcs[0], axis=0)
+                min_ = np.min(pred_pcs[0], axis=0)
+            else:
+                max_ = np.array([0.0, 0.0, 0.0])
+                min_ = np.array([0.0, 0.0, 0.0])
 
+            center = (max_ + min_) / 2.0
+            box_size = max_ - min_
+            scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
+
+            # Estraiamo lo IoU del Top-1 bounding box (indice 0)
+            top1_iou = float(ious[0, 0]) if ious.shape[0] > 0 else 0.0
+            
+            # Definiamo il successo binario: 1 se IoU >= 0.25, altrimenti 0
+            is_success_binary = 1 if top1_iou >= 0.25 else 0
+
+            self.detection_results_to_export.append({
+                "scene_id": inputs[0]['image_id'],
+                "object_id": inputs[0]['sr3d_data'][0]['target_id'],
+                "ann_id": inputs[0]['sr3d_data'][0]['annotation_id'],
+                "bbox": scanrefer_box.tolist(),
+                "iou": top1_iou,                  # Utile per debug analitico
+                "success": is_success_binary,      # Il flag binario che ti serve (1 o 0)
+            })
+            if self.cfg.LOG_NORMS:
+                logs = {"logged_norms": outputs[0]["logged_norms"]}
+                self.detection_results_to_export[-1].update(logs)
         if self.cfg.VISUALIZE_REF:
+            print_saliency = False
+            if self.cfg.EXPLAINABLE:
+                if self.cfg.GRADCAM or outputs[0]['saliency_data'].get('visual_grad') is not None:
+                    print_saliency = True
+                    import matplotlib.pyplot as plt
+                    # normalize
+                    v_grad_norm = outputs[0]['saliency_data']['visual_grad'].flatten() # Shape [N]
+                    
+                    # threshold = v_grad.mean()
+                    # v_grad_denoised = np.where(v_grad > threshold, v_grad, 0)
+                    # v_grad_log = np.log1p(v_grad_denoised)
+                    # v_min = np.percentile(v_grad_log[v_grad_log > 0], 5) if np.any(v_grad_log > 0) else 0
+                    # v_max = np.percentile(v_grad_log, 98)
+                    # v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                    v_min = np.percentile(v_grad_norm, 10)
+                    v_max = np.percentile(v_grad_norm, 98)
+                    v_grad_norm = np.clip((v_grad_norm - v_min) / (v_max - v_min + 1e-8), 0, 1)
+                    # v_grad_norm = (v_grad - v_grad.min()) / (v_grad.max() - v_grad.min() + 1e-8)
+
+                    # colormap
+                    cmap = plt.get_cmap('jet')
+                    colors = cmap(v_grad_norm)[:, :3] # take rgb only
+                    colors = (colors * 255).astype(np.uint8)
+
             gt_anchor_bboxs = None
             gt_anchor_pcs = None
             anchor_pcs = None
@@ -472,6 +613,25 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                         anchor_bboxs.append(np.expand_dims(_set_axis_align_bbox(anchor_pc), axis=0))
 
             scene_name = inputs[0]['file_name'].split('/')[-3] + " " + inputs[0]['sr3d_data'][0]['text_caption']
+            if self.cfg.EXPLAINABLE:
+                scene_data = {
+                        "pc": inputs[0]['scannet_coords'].cpu().numpy(),           # [N, 3] per la BEV e 3D
+                        "color": inputs[0]['scannet_color'].cpu().numpy(),         # [N, 3] per il background
+                        "full_caption": inputs[0]['sr3d_data'][0]['text_caption'],
+                        "tokens": outputs[0]['saliency_data']['tokenized_text'] if not self.cfg.GRADCAM else None,       # Lista di parole per il player
+                        "attn_matrix": outputs[0]['saliency_data']['attn_weights_source'] if outputs[0]['saliency_data'].get('attn_weights_source') is not None else None, # Matrice di attenzione tra parole e punti
+                        "visual_grad": outputs[0]['saliency_data']['visual_grad'] if self.cfg.EXPLAINABLE and self.cfg.GRADCAM else None, # Il gradiente attuale
+                        "gt_mask": full_gt_mask,                                   # Per vedere dove "dovrebbe" guardare
+                        "target_id": target_id,
+                        "pred_masks_logits": outputs[0]['instances_3d']['pred_masks'].cpu().numpy(), # I logit dei pred mask prima della soglia
+                        "pred_scores": outputs[0]['instances_3d']['pred_scores'].cpu().numpy(), # I punteggi di confidenza per ogni pred mask
+                    }
+                import os
+                os.makedirs("outputs/investigation", exist_ok=True)
+                output_file = f"outputs/investigation/scene_{inputs[0]['image_id']}_data.pth"
+                torch.save(scene_data, output_file)
+                print(f"Saved scene data for explainability investigation to {output_file}")
+        
             visualize_pc_masks_and_bbox(
                 pc=inputs[0]['scannet_coords'].numpy(),
                 color=inputs[0]['scannet_color'].numpy(),
@@ -486,7 +646,10 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 gt_anchor_bboxs=gt_anchor_bboxs,
                 sr3d_data=inputs[0]['sr3d_data'][0],
                 anchor_pcs=anchor_pcs,
-                anchor_bboxs=anchor_bboxs
+                anchor_bboxs=anchor_bboxs,
+                saliency_colors=colors if print_saliency else None,
+                saliency_data=outputs[0]['saliency_data'] if print_saliency else None,
+                word_attn = outputs[0]['saliency_data']['attn_weights_source'] if self.cfg.EXPLAINABLE and outputs[0]['saliency_data'].get('attn_weights_source') is not None else None
             )
 
         self.detection_results.append(detected)
@@ -504,19 +667,23 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
             detection_results = self.detection_results
             mask_detection_results = self.mask_detection_results
 
-        if self.cfg.TEST_DATASET_INFERENCE:
+        # if self.cfg.TEST_DATASET_INFERENCE:
+        if self.cfg.SAVE_TEST_RESULTS:
             try:
+                if self.cfg.TEST_RESULT_EXPORT_PATH is None:
+                    raise ValueError("TEST_RESULT_EXPORT_PATH is not set in the configuration.")
                 Path(self.cfg.TEST_RESULT_EXPORT_PATH).mkdir(parents=True, exist_ok=True)
                 print(f'exporting test results to {self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json')
                 with open(f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json', 'w') as json_file:
-                    json.dump(detection_results, json_file, indent=4)
+                    json.dump(self.detection_results_to_export, json_file, indent=4)
             except Exception as e:
                 print(f"Error exporting test results: {e}")
                 st()
-            return None
+            # return None
 
         self.detection_results = []
         self.mask_detection_results = []
+        self.detection_results_to_export = []
         detection_results = np.array(detection_results).astype(np.float32).mean(axis=0)
         mask_detection_results = np.array(mask_detection_results).astype(np.float32).mean(axis=0)
             

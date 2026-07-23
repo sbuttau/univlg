@@ -13,10 +13,10 @@ import debugpy
 
 # Wait for VSCode to attach
 import sys
-# debugpy.listen(("0.0.0.0", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
-# print("Debugger attached!")
+debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
+print("Debugger attached!")
 
 import socket
 import copy
@@ -61,6 +61,7 @@ from detectron2.engine import (
 )
 from detectron2.engine.defaults import hooks
 from detectron2.evaluation import COCOEvaluator, DatasetEvaluator, inference_on_dataset
+# import detectron2.evaluation as d2_evaluator
 from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.utils.logger import setup_logger
@@ -96,12 +97,71 @@ from univlg.data_video.dataset_mapper_coco import (
 from univlg.global_vars import SCANNET_LIKE_DATASET
 from torch.nn.parallel import DistributedDataParallel
 from torchinfo import summary
-
+from tests.norm_hooks import NormHookManager, print_summary_for_dict
 warnings.filterwarnings("ignore")
 torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 st = ipdb.set_trace
+
+# original_inference_on_dataset = d2_evaluator.inference_on_dataset
+
+# def patched_inference_on_dataset(model, data_loader, evaluator, callbacks=None):
+#     # Monkey patch: redefine detectron2's inference on dataset function to support test-time register analysis 
+
+#     print("HookManager injection in detectron2 inference_on_dataset...")
+    
+#     # Inizializziamo il nostro manager (Step 2A)
+#     # from la_tua_ricerca.univlg_hook_manager import UniVLGHookManager
+#     # from la_tua_ricerca.hook_manager import HookMode
+#     import torch
+#     import os
+#     import numpy as np
+#     # print(model)
+#     for name, _ in model.named_children():
+#         print("Sotto-modulo trovato:", name)
+#     # manager = UniVLGHookManager(model)
+#     # manager.reinit(mode=HookMode.ANALYSIS)
+#     # manager.finalize() # activate hooks on model
+#     decoder = model.mask_decoder
+#     print(f"Tipo di decoder: {type(decoder)}")
+    
+#     # Stampiamo i primi due livelli di figli dentro il decoder 
+#     # per identificare dove risiede la lista dei Transformer Layers
+#     print("\n=== STRUTTURA INTERNA DI MASK_DECODER ===")
+#     for name, child in decoder.named_children():
+#         print(f"--> Sotto-modulo del decoder: {name} ({type(child).__name__})")
+#         # Se ha layer o blocchi interni, stampiamo anche i loro componenti
+#         if name in ['layers', 'transformer_layers', 'blocks', 'transformer']:
+#             for sub_name, sub_child in child[0].named_children():
+#                 print(f"    └── Componente del Layer 0: {sub_name} ({type(sub_child).__name__})")
+#     print("=========================================\n")
+#     # Limit the dataloader to a few batches for this analysis 
+#     import itertools
+#     limited_data_loader = itertools.islice(data_loader, 35)
+    
+#     # original inference loop 
+#     results = original_inference_on_dataset(
+#         model, 
+#         limited_data_loader, 
+#         evaluator, 
+#         callbacks
+#     )
+    
+#     # extract and save the max norms across sublayers 
+#     print("Max norms extraction...")
+#     num_decoder_layers = manager.num_layers()
+#     mean_max_norms = manager.get_max_norms_across_sublayers(num_layers=num_decoder_layers)
+    
+#     output_path = "/workspace/univlg/max_norms_sublayers.npy"
+#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+#     np.save(output_path, mean_max_norms)
+#     print(f"Max norms saved to {output_path}")
+#     sys.exit(0)
+
+# # substitute the original function with the patched one
+# inference_on_dataset = patched_inference_on_dataset
+# print("[MONKEY PATCH] detectron2 inference_on_dataset patched successfully.")
 
 class OneCycleLr_D2(torch.optim.lr_scheduler.OneCycleLR):
     def __init__(self, *args, **kwargs):
@@ -660,6 +720,15 @@ class Trainer(DefaultTrainer):
             with autocast():
                 results_i = inference_on_dataset(model, data_loader, evaluator)
             results[dataset_name] = results_i
+        # store debug norms
+        # if cfg.LOG_NORMS:
+        #     final_debug_norms = {
+        #         "post_dino": model.visual_backbone.backbone.debug_norms,
+        #         "pre_FFN": {i: block.debug_norms["pre_FFN"] for i, block in enumerate(model.visual_backbone.pixel_decoder.cross_view_attn)},
+        #         "post_FFN": {i: block.debug_norms["post_FFN"] for i, block in enumerate(model.visual_backbone.pixel_decoder.cross_view_attn)},
+        #     }
+        #     torch.save(final_debug_norms, f"{cfg.TEST_RESULT_EXPORT_PATH}/{dataset_name}_visual_backbone_norms.pt")
+            
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -840,10 +909,53 @@ def main(args):
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS, resume=args.resume
         )
+        if cfg.HOOK_NORMS:
+            hook_manager = NormHookManager(model)
+            hook_manager.attach()
+            hook_manager.attach_dino_hook() 
+            hook_manager.attach_language_encoder_mask_hook()
+            hook_manager.attach_topk_abs_hooks(name_filter="lang_encoder")
+            #hook_manager.attach_raw_hooks(name_filter="lang_encoder")
         res = Trainer.test(cfg, model)
         if cfg.TEST.AUG.ENABLED: raise NotImplementedError
         if wandb.run is not None:
             wandb.finish()
+        if cfg.HOOK_NORMS:
+            hook_manager.detach()
+
+            INCLUDE_PATTERNS = [
+                "dinov2.inner.norm",
+                "visual_backbone.pixel_decoder.cross_view_attn",  # fusione multi-view nel pixel decoder
+                "mask_decoder.transformer_cross_attention_layers",
+                "mask_decoder.transformer_self_attention_layers",
+                "mask_decoder.transformer_ffn_layers",
+                "mask_decoder.vis_output_cross_attn",
+                "mask_decoder.vis_output_ffn",
+            ]
+
+            EXCLUDE_PATTERNS = [
+                "pe_layer",  # positional embedding, escluso per ora
+                "topk_abs/",   # difensivo: mai mischiarli nel file delle norme
+                #"raw/",
+            ]
+            filtered = hook_manager.select(INCLUDE_PATTERNS, EXCLUDE_PATTERNS)
+            from tests.norm_hooks import print_summary_for_dict
+            # print_summary_for_dict(filtered)
+            torch.save(filtered, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text_5.pt")
+            print(f"Saved hook norms to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_hook_norms_text_5.pt")
+            mask_data = hook_manager.data.get("text_attention_mask", [])
+            # assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder...norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder...norm2'])}"
+            assert len(hook_manager.data["text_attention_mask"]) == len(hook_manager.data["mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2"]), f"Expected {len(hook_manager.data['text_attention_mask'])} == {len(hook_manager.data['mask_decoder.lang_encoder.text_encoder.text_model.transformer.encoder.layers.9.norm2'])}"
+            torch.save(mask_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks_5.pt")
+            print(f"Saved attention masks to {cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_attention_masks_5.pt")
+            # --- top-k e raw, ciascuno nel suo file ---
+            topk_abs_data = hook_manager.select(["topk_abs/"])
+            torch.save(topk_abs_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_topk_abs_5.pt")
+            print(f"Saved top-k ({len(topk_abs_data)} modules)")
+
+            # raw_data = hook_manager.select(["raw/"])
+            # torch.save(raw_data, f"{cfg.TEST_RESULT_EXPORT_PATH}/{cfg.DATASETS.TEST[0]}_raw_feat_values_5.pt")
+            # print(f"Saved raw ({len(raw_data)} modules)")
         return res
 
     trainer = Trainer(cfg)
@@ -916,6 +1028,7 @@ def slurm_launch(
         timeout (timedelta): timeout of the distributed workers
         args (tuple): arguments passed to main_func
     """
+    print(f"Inizio train.py")
     print(f"Launcher got args: {num_gpus_per_machine=}, {num_machines=}, {machine_rank=}, {dist_url=}, {port=}, {backend=}, {cfg=}, {timeout=}, {one_process_per_gpu=}")
     logger = logging.getLogger(__name__)
     if mp.get_start_method(allow_none=True) is None:

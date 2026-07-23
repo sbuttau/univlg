@@ -74,6 +74,10 @@ class CrossViewPAnet(nn.Module):
         self.num_layers = num_layers
         self.cfg = cfg
         self.pe_layer = self.init_pe(latent_dim)
+        self.debug_norms = {
+            key: [[] for _ in range(self.num_layers)]  # list of lists [layer][scene] -> tensor
+            for key in ["pre_FFN", "post_FFN", "pre_LayerNorm"]
+        }
 
     def init_pe(self, latent_dim):
         pe_layer = PositionEmbeddingLearned(dim=3, num_pos_feats=latent_dim)
@@ -156,7 +160,8 @@ class CrossViewPAnet(nn.Module):
             output = feature[:, None]  # B*N, 1, c
 
             bn, _, c = output.shape
-
+            if self.cfg.LOG_NORMS:
+                debug_norms_voxelized = {"pre_FFN": [], "post_FFN": []}
             for i in range(self.num_layers):
                 # get knn features from updated output
                 key = (
@@ -170,19 +175,54 @@ class CrossViewPAnet(nn.Module):
                     query_pos=query_pe,
                     pos=knn_pe,
                 )
+                if self.cfg.LOG_NORMS:
+                    raw_before_ffn = output.clone()  
+                    debug_norms_voxelized["pre_FFN"].append(raw_before_ffn.norm(dim=-1))
                 output = self.ffn_layers[i](output).permute(1, 0, 2)
+                if self.cfg.LOG_NORMS:
+                    raw_post_ffn = output.clone()  
+                    debug_norms_voxelized["post_FFN"].append(raw_post_ffn.norm(dim=-1))
                 output = self.layer_norms[i](output)  # new
 
             if voxelize:
                 out_new = []
                 idx = 0
                 point2voxel = multiview_data["multi_scale_p2v"][j]
-                output = output.squeeze(1)
+                output = output.squeeze(1)      
+                if self.cfg.LOG_NORMS: # temporary accumulator
+                    permuted =  {
+                        key: [None] * self.num_layers
+                        for key in ["pre_FFN", "post_FFN"]
+                }
+             
                 for i, b in enumerate(batch_offset):
                     out_new.append(output[idx:b][point2voxel[i]])
+
+                    if self.cfg.LOG_NORMS:
+                        for key in ["pre_FFN", "post_FFN"]:
+                            for layer_idx in range(self.num_layers):
+                                raw = debug_norms_voxelized[key][layer_idx].squeeze(0)
+                                piece = raw[idx:b][point2voxel[i]]
+                                if permuted[key][layer_idx] is None:
+                                    permuted[key][layer_idx] = piece
+                                else:
+                                    permuted[key][layer_idx] = torch.cat(
+                                        [permuted[key][layer_idx], piece], dim=0
+                                    )
                     idx = b
                 output = torch.stack(out_new, 0)
 
+                if self.cfg.LOG_NORMS:
+                    for key in ["pre_FFN", "post_FFN"]:
+                        for layer_idx in range(self.num_layers):
+                            final = (
+                                permuted[key][layer_idx]
+                                .reshape(bs, v, h, w)
+                                .flatten(0, 1)
+                                .detach()
+                                .cpu()
+                            )
+                            self.debug_norms[key][layer_idx].append(final)
             output = output.reshape(bs, v, h, w, c).permute(0, 1, 4, 2, 3).flatten(0, 1)
             out_features.append(output)
         return out_features

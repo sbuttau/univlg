@@ -162,7 +162,7 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.SAMPLE_CHUNK_AUG = False
     cfg.INPUT.VOXELIZE = False
     cfg.INPUT.VOXEL_SIZE = [0.02, 0.04, 0.08, 0.16]
-    cfg.DATALOADER.TEST_NUM_WORKERS = 0
+    cfg.DATALOADER.TEST_NUM_WORKERS = 4
     cfg.MODEL.CROSS_VIEW_BACKBONE = False
     cfg.INPUT.ORIGINAL_EVAL = False
     cfg.INPUT.UNIFORM_SAMPLE = False
@@ -196,8 +196,8 @@ def add_maskformer2_video_config(cfg):
     cfg.MASK_VALID = False
     cfg.IGNORE_DEPTH_MAX = -1.0
     cfg.MULTI_TASK_TRAINING = False
-    cfg.DATASETS.TRAIN_3D = []
-    cfg.DATASETS.TRAIN_2D = []
+    cfg.DATASETS.TRAIN_3D = ['sr3d_ref_scannet_train_single','scanrefer_scannet_anchor_train_single','nr3d_ref_scannet_anchor_train_single','scannet200_context_instance_train_200cls_single_highres_100k']# ['sr3d_ref_scannet_train_single','scanrefer_scannet_anchor_train_single','nr3d_ref_scannet_anchor_train_single','matterport_train_single','scannet200_context_instance_train_200cls_single_highres_100k']
+    cfg.DATASETS.TRAIN_2D = []# ['refcoco_train','refcoco+_train','refcocog_train','coco_2017_train']
     cfg.TRAIN_3D = False
     cfg.TRAIN_2D = False
     cfg.FIND_UNUSED_PARAMETERS = False
@@ -205,8 +205,8 @@ def add_maskformer2_video_config(cfg):
     cfg.NO_POINTREND = False
     cfg.HIGH_RES_SUBSAMPLE = False
     cfg.HIGH_RES_INPUT = False
-    cfg.DATASETS.TEST_3D_ONLY = []
-    cfg.DATASETS.TEST_2D_ONLY = []
+    cfg.DATASETS.TEST_3D_ONLY = ['sr3d_ref_scannet_val_single_batched','sr3d_ref_scannet_train_eval_single_batched','scanrefer_scannet_anchor_val_single_batched','scanrefer_scannet_anchor_train_eval_single_batched','nr3d_ref_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_train_eval_single_batched','matterport_val_single','scannet200_context_instance_val_200cls_single_highres_100k','ScannetPPDataset']
+    cfg.DATASETS.TEST_2D_ONLY = [] #['coco_2017_val','refcoco_val','refcoco_train_eval','refcoco+_val','refcoco+_train_eval','refcocog_val','refcocog_train_eval']
     cfg.EVALUATE_SUBSET = None
     cfg.EVAL_PER_IMAGE = False
     cfg.DEPTH_PREFIX = "depth_inpainted"
@@ -221,13 +221,13 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.SAMPLING_FRAME_NUM_2D = cfg.INPUT.SAMPLING_FRAME_NUM
     cfg.TEST.SUBSAMPLE_DATA = 2
     cfg.TRAIN_SUBSAMPLE_DATA = None
-    cfg.DATASETS.TEST_SUBSAMPLED = ['scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','sr3d_ref_scannet_val_single_batched', 'scannet200_context_instance_train_200cls_single_highres_100k']
+    cfg.DATASETS.TEST_SUBSAMPLED = [] #['scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','sr3d_ref_scannet_val_single_batched', 'scannet200_context_instance_train_200cls_single_highres_100k']
     cfg.DATASETS.TRAIN_SUBSAMPLED = []
     cfg.NOT_USE_WD_PRETRAINED = False
     cfg.MEAN_CENTER = False
     cfg.FORCE_DECODER_3D = False
     cfg.SKIP_CLASSES_2D = cfg.SKIP_CLASSES
-    cfg.VISUALIZE_PRED = True
+    cfg.VISUALIZE_PRED = False
     cfg.INPUT.MIN_SIZE_TEST_2D = cfg.INPUT.MIN_SIZE_TEST
     cfg.INPUT.MAX_SIZE_TEST_2D = cfg.INPUT.MAX_SIZE_TEST
     cfg.INPUT.IMAGE_SIZE_2D = cfg.INPUT.IMAGE_SIZE
@@ -345,7 +345,7 @@ def add_maskformer2_video_config(cfg):
     cfg.FORCE_USE_DETECTION_AUGS = False
     cfg.BYPASS_TARGET_ANCHOR_CHECK = False
     cfg.SAMPLING_MAX_FRAMES_PER_RELEVANT_ID = None
-    cfg.VIZ_EXTRA_REF = False
+    cfg.VIZ_EXTRA_REF = True
     cfg.USE_CLIP_RELEVANT_FRAMES = False
     cfg.FORCE_FULL_RANDOM_RELEVANT_FRAMES = False
     cfg.USE_CLIP_RELEVANT_FRAMES_CLIP_ONLY = False
@@ -424,3 +424,15 @@ def add_maskformer2_video_config(cfg):
     cfg.AR_EMBED = False
     cfg.AR_INSTRUCT = False
     cfg.SAVE_DATA_SAMPLE = False
+    cfg.DATA_SAMPLE_PATH = None
+
+    # EXPLAINABILITY
+    cfg.EXPLAINABLE = False
+    cfg.GRADCAM = False
+    cfg.GMAR = False
+    cfg.TEST_TIME_REGISTERS = False
+    cfg.NUM_TEST_REGISTERS = 4
+    cfg.CHEFER = False
+    cfg.LOG_NORMS = False
+    cfg.SAVE_TEST_RESULTS = False
+    cfg.HOOK_NORMS = False

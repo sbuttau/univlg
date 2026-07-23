@@ -48,12 +48,23 @@ class SelfAttentionLayer(nn.Module):
         query_pos: Optional[Tensor] = None,
     ):
         q = k = self.with_pos_embed(tgt, query_pos)
-        tgt2 = self.self_attn(
+        tgt2, attn_map = self.self_attn(
             q, k, value=tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
-        )[0]
+        )#[0]
+        if attn_map.requires_grad:
+            attn_map = attn_map.clone() # Crea un nodo nel grafo
+            attn_map.retain_grad()
+            
+            # Registriamo l'hook qui, nel momento della creazione
+            def save_grad(grad):
+                # Usiamo un attributo temporaneo per portarlo fuori
+                self.last_grad = grad.detach().cpu()
+            attn_map.register_hook(save_grad)
+            tgt2 = tgt2 + (attn_map.sum() * 1e-10) # Forziamo il grafo a mantenere attivo il tensore dell'attenzione
+            self.attn_probs = attn_map
+
         tgt = tgt + self.dropout(tgt2)
         tgt = self.norm(tgt)
-
         return tgt
 
     def forward_pre(
@@ -103,9 +114,11 @@ class CrossAttentionLayer(nn.Module):
 
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
+        # Explainability - useful for GMAR
+        self.attn_probs = None
 
         self._reset_parameters()
-
+    
     def _reset_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:
@@ -123,16 +136,29 @@ class CrossAttentionLayer(nn.Module):
         pos: Optional[Tensor] = None,
         query_pos: Optional[Tensor] = None,
     ):
-        tgt2 = self.multihead_attn(
+        tgt2, attn_map = self.multihead_attn(
             query=self.with_pos_embed(tgt, query_pos),
             key=self.with_pos_embed(memory, pos),
             value=memory,
             attn_mask=memory_mask,
             key_padding_mask=memory_key_padding_mask,
-        )[0]
+            average_attn_weights=False,
+        )#[0]
+        if attn_map.requires_grad:
+            attn_map = attn_map.clone() # Crea un nodo nel grafo
+            attn_map.retain_grad()
+        
+            # Registriamo l'hook qui, nel momento della creazione
+            def save_grad(grad):
+                # Usiamo un attributo temporaneo per portarlo fuori
+                self.last_grad = grad.detach()
+            
+            attn_map.register_hook(save_grad)
+            tgt2 = tgt2 + (attn_map.sum() * 1e-10) # Forziamo il grafo a mantenere attivo il tensore dell'attenzione
+            self.attn_probs = attn_map
+
         tgt = tgt + self.dropout(tgt2)
         tgt = self.norm(tgt)
-
         return tgt
 
     def forward_pre(

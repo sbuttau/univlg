@@ -276,6 +276,36 @@ def convert_grounding_to_od_logits_ref(logits, num_class, positive_maps, reduce=
     # scores[:, :, -1] = logits[:, :, -1]
     return scores
 
+def convert_grounding_to_od_logits_ref_xai(logits, num_class, positive_maps, reduce="mean"):
+    """
+    logits: (batch_size, q, seq_len)
+    num_class: N
+    positive_maps: (batch_size, seq_len) mapping
+    """
+    # ... (assertion remains the same) ...
+    
+    collected_scores = []
+    
+    for i in range(num_class):
+        # Using a mask approach is often safer for autograd than explicit indexing in loops
+        locations = (positive_maps == i).nonzero(as_tuple=True)[0]
+        
+        if len(locations) == 0:
+            # FIX: Multiply by 0 instead of creating a new tensor.
+            # This ensures that even a 'zero' score is mathematically 
+            # linked to the original logits tensor.
+            collected_scores.append(logits[:, :, 0] * 0)
+            continue
+            
+        class_logits = logits[:, :, locations]
+        
+        if reduce == "sum":
+            collected_scores.append(class_logits.sum(-1))
+        else:
+            collected_scores.append(class_logits.mean(-1))
+            
+    # Stack maintains the connection to all elements in collected_scores
+    return torch.stack(collected_scores, dim=-1)
 
 def convert_grounding_to_od_logits_batched(logits, num_class, positive_map_od):
     """
