@@ -142,7 +142,7 @@ export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_sc
 export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
 source scripts/setup.sh
 configure_local
-NUM_VAL_DATALOADERS=1 NUM_DATALOADERS=1 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+NUM_VAL_DATALOADERS=0 NUM_DATALOADERS=0 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
 TEST_DATASET_INFERENCE=True \
 TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
 SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
@@ -151,11 +151,12 @@ VISUALIZE_REF=True \
 VIZ_EXTRA_REF=True \
 VISUALIZE_LOG_DIR="outputs/viz_ref" \
 $PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
-EXPLAINABLE False \
-CHEFER False \
-LOG_NORMS True \
-SAVE_TEST_RESULTS True \
+EXPLAINABLE True \
+CHEFER True \
+LOG_NORMS False \
+SAVE_TEST_RESULTS False \
 TEST_RESULT_EXPORT_PATH analysis_plots \
+HOOK_NORMS True
 SAVE_DATA_SAMPLE True \ 
 DATA_SAMPLE_PATH ckpts/misc/
 ```
@@ -182,4 +183,54 @@ streamlit run player2.py
 To visualize attention maps:
 ```bash
 streamlit run player_attn_weights.py -- --file outputs/investigation/scene_scene0355_00_data.pth
+```
+
+## Attention sinks
+eval script
+```bash
+export CKPT_PATH="ckpts/univlg.pth"
+export SCANNET_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet/two_scene_database.yaml" # this is not used
+export SCANNET_200_DATA_DIR="/workspaces/univlg/data/mask3d_processed/scannet200/train_database.yaml"
+source scripts/setup.sh
+configure_local
+NUM_VAL_DATALOADERS=0 NUM_DATALOADERS=0 EVAL_ONLY=1 RETURN_SCENE_BATCH_SIZE=1 \
+TEST_DATASET_INFERENCE=True \
+TEST_RESULT_EXPORT_PATH="$OUTPUT_DIR/test_results" \
+SCANNET_DATA_DIR="$SCANNET_DATA_DIR" \
+SCANNET200_DATA_DIR="$SCANNET200_DATA_DIR" \
+VISUALIZE_REF=True \
+VIZ_EXTRA_REF=True \
+VISUALIZE_LOG_DIR="outputs/viz_ref" \
+$PREFIX "${PREFIX_ARGS[@]}" scripts/main.sh \
+EXPLAINABLE True \
+CHEFER True \
+LOG_NORMS False \
+SAVE_TEST_RESULTS False \
+TEST_RESULT_EXPORT_PATH tests \
+HOOK_NORMS True 
+```
+
+plot text encoder stats
+```bash
+ python analyze_sink_persistence.py --data scanrefer_scannet_anchor_val_single_batched_hook_norms_text.pt --masks scanrefer_scannet_anchor_val_single_batched_attention_masks.pt
+ ```
+
+```bash
+python plot_backbone_and_decoder.py --skip_visual_backbone --skip_mask_decoder     --text_norms_file scanrefer_scannet_anchor_val_single_batched_hook_norms_text.pt     --out_dir ./plots
+```
+
+plot visual backbone and pixel decoder
+ ```bash
+ python plot_backbone_and_decoder.py --norms scanrefer_scannet_anchor_val_single_batched_hook_norms.pt --out_dir plots/
+ ```
+
+ violin plots
+ ```bash
+ python plot_norm_distributions.py --norms_file scanrefer_scannet_anchor_val_single_batched_hook_norms.pt --out_dir plots/
+ ```
+
+ text encoder median vs top 3 max norms per layer (inside `tests/`)
+ ```bash
+ python plot_massive_per_layer.py --topk_data scanrefer_scannet_anchor_val_single_batched_topk_abs_1000.pt --masks scanrefer_scannet_anchor_val_
+single_batched_attention_masks_1000.pt --which both --out_dir ./plots
 ```

@@ -204,3 +204,4 @@ pytorch3d/
 
 analysis_plots/*.json
 analysis_plots/*.pt
+*.pt

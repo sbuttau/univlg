@@ -226,7 +226,7 @@ def main():
     data = torch.load(args.topk_data, map_location="cpu")
     data = {name: entries for name, entries in data.items() if name.startswith("topk_abs/")}
     print(f"Loaded {len(data)} topk_abs keys from {args.topk_data}")
-    import pdb; pdb.set_trace()
+
     masks = torch.load(args.masks, map_location="cpu") if args.masks else None
     if masks is None:
         print("WARNING: no mask provided, using the full tensor length "
@@ -261,7 +261,7 @@ def main():
             print(f"  {layer_idx:5d} | {top_str} | {med:6.3f}\u00b1{med_std:5.3f} | {ratio_str}")
 
     fig.suptitle(
-        "Three largest activation magnitudes and the median magnitude at each layer in JINA-CLIPv2",
+        "Three largest activation magnitudes and the median magnitude at each layer in JINA-CLIP",
         fontsize=13,
     )
     fig.tight_layout()
