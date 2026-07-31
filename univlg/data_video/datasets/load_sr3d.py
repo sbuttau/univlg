@@ -46,6 +46,8 @@ _PREDEFINED_SPLITS_REF = {
     'sqa3d_ref_scannet_test_single': ('SQA_test.json'),
     'sqa3d_ref_scannet_debug_single': ('SQA_debug.json'),
     'sqa3d_ref_scannet_train_eval_single': ('SQA_train_eval.json'),
+
+    'vigil3d_ref_scannet_val_single': ('vigil3d_ref.json'),
 }
 
 # ignore_scene_dict = {"scene0585_01", "scene0181_02", "scene0181_02", "scene0284_00"}

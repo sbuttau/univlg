@@ -313,9 +313,11 @@ def get_positive_tokens(caption, token_lists):
     for token in token_lists:
         start_index = caption.find(token)
         if start_index == -1:
-            raise ValueError(f"token {token} not found in caption {caption}, token_lists: {token_lists}")
-        end_index = start_index + len(token)
-        tokens_positive.append([[start_index, end_index]])
+            # raise ValueError(f"token {token} not found in caption {caption}, token_lists: {token_lists}")
+            tokens_positive.append([[0, len(caption)]]) # token not explicitly mentioned in caption (e.g. indirect ViGiL3D prompts)
+        else:
+            end_index = start_index + len(token)
+            tokens_positive.append([[start_index, end_index]])
     return tokens_positive
 
 

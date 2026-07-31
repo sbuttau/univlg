@@ -95,7 +95,9 @@ class Sr3dDatasetMapper:
 
         if self.cfg.TEST_DATASET_INFERENCE:
             dataset_dict["utterance"] = original_utterance
-            dataset_dict["instance_type"] = dataset_dict["target_id"]
+            # dataset_dict["instance_type"] = dataset_dict["target_id"]
+            dataset_dict["instance_type"] = dataset_dict.get("target_name", str(dataset_dict["target_id"]))
+
 
         utterance = dataset_dict["utterance"].lower()
         target_id = dataset_dict["target_id"]
