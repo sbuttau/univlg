@@ -222,14 +222,15 @@ def load_scannet_data(
                     target_id = batched_input['sr3d_data'][0]['target_id']
                     anchor_ids = batched_input['sr3d_data'][0]['anchor_ids']
                     relevant_ids = [target_id, *anchor_ids]
-                    if not all([relevant_id in unique_instances for relevant_id in relevant_ids]):
-                        # sometimes some anchors are very small, just ignore them
-                        # the evaluation does not happen on anchor ids, so it's fine
+                    relevant_ids = [r for r in relevant_ids if r != -1]  # skip for zero-target
+                    if len(relevant_ids) == 0:
+                        relevant_ids = None  # zero-target
+                    if relevant_ids is not None and not all([relevant_id in unique_instances for relevant_id in relevant_ids]):
                         keep_mask = torch.tensor([relevant_id in unique_instances for relevant_id in relevant_ids])
                         relevant_ids = [relevant_id for relevant_id in relevant_ids if relevant_id in unique_instances]
                         batched_input['sr3d_data'][0]['positive_map'] = batched_input['sr3d_data'][0]['positive_map'][keep_mask]
                         batched_input['sr3d_data'][0]['tokens_positive'] = [batched_input['sr3d_data'][0]['tokens_positive'][i] for i in range(len(batched_input['sr3d_data'][0]['tokens_positive'])) if keep_mask[i]]
-                    unique_instances = torch.tensor(relevant_ids)
+                    unique_instances = torch.tensor(relevant_ids) if relevant_ids is not None else unique_instances
 
                 num_unique_instances = len(unique_instances)
                 scannet_masks = []

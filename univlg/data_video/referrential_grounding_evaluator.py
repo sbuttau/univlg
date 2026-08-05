@@ -43,7 +43,7 @@ def visualize_pc_masks_and_bbox(
     pred_pcs, gt_bbox, pred_bbox,
     data_dir=None, sample_name=None, inputs=None,
     gt_anchor_pcs=None, gt_anchor_bboxs=None, sr3d_data=None,
-    anchor_pcs=None, anchor_bboxs=None
+    anchor_pcs=None, anchor_bboxs=None, show_pred_box=False
 ):
     """
     Input
@@ -94,17 +94,17 @@ def visualize_pc_masks_and_bbox(
         alpha=0.8,
         edge_width=0.03
     )
-
-    # add pred boxes
-    pred_bbox = box_xyzxyz_to_cxcyczwhd(torch.from_numpy(pred_bbox)).numpy()
-    v.add_bounding_box(
-        'Boxes (Pred)',
-        position=pred_bbox[..., :3][0],
-        size=pred_bbox[..., 3:][0],
-        color=np.array([255, 0, 0]),
-        alpha=0.8,
-        visible=True,
-        edge_width=0.03)
+    if show_pred_box:
+        # add pred boxes
+        pred_bbox = box_xyzxyz_to_cxcyczwhd(torch.from_numpy(pred_bbox)).numpy()
+        v.add_bounding_box(
+            'Boxes (Pred)',
+            position=pred_bbox[..., :3][0],
+            size=pred_bbox[..., 3:][0],
+            color=np.array([255, 0, 0]),
+            alpha=0.8,
+            visible=True,
+            edge_width=0.03)
 
     if gt_anchor_pcs is not None:
         anchor_colors = get_color(len(gt_anchor_pcs))
@@ -125,13 +125,13 @@ def visualize_pc_masks_and_bbox(
                 visible=False
             )
 
-        v.add_labels(
-            'Labels',
-            [sr3d_data['text_caption'], sr3d_data['target_name'], sr3d_data['anchors_names']],
-            [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
-            [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
-            visible=True
-        )
+    v.add_labels(
+        'Labels',
+        [sr3d_data['text_caption'], sr3d_data['target_name'], sr3d_data['anchors_names']],
+        [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0])],
+        [np.array([255.0, 0.0, 0.0]), np.array([0.0, 255.0, 0.0]), np.array([0.0, 0.0, 255.0])],
+        visible=True
+    )
 
     if anchor_pcs is not None:
         anchor_colors = get_color(len(anchor_pcs))
@@ -386,15 +386,15 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 top_bboxs.append(_set_axis_align_bbox(cur_pc))
         top_bboxs = np.array(top_bboxs)
 
+        # if self.cfg.TEST_DATASET_INFERENCE:
+        assert len(inputs[0]['sr3d_data'])
+        if pred_pcs[0].shape[0] > 0:
+            max_ = np.max(pred_pcs[0], axis=0)
+            min_ = np.min(pred_pcs[0], axis=0)
+        else:
+            max_ = np.array([0.0, 0.0, 0.0])
+            min_ = np.array([0.0, 0.0, 0.0])
         if self.cfg.TEST_DATASET_INFERENCE:
-            assert len(inputs[0]['sr3d_data'])
-            if pred_pcs[0].shape[0] > 0:
-                max_ = np.max(pred_pcs[0], axis=0)
-                min_ = np.min(pred_pcs[0], axis=0)
-            else:
-                max_ = np.array([0.0, 0.0, 0.0])
-                min_ = np.array([0.0, 0.0, 0.0])
-
             center = (max_ + min_) / 2.0
             box_size = max_ - min_
             scanrefer_box = get_3d_box_scanrefer(box_size, 0, center)
@@ -409,6 +409,7 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         target_id = inputs[0]['sr3d_data'][0]['target_id']
 
         try:
+            assert target_id != -1, "zero-target: no GT object"
             gt_indices = torch.nonzero(inputs[0]['scannet_labels'][:, 1].cpu() == target_id, as_tuple=True)[0]
             gt_pc = inputs[0]['scannet_coords'][gt_indices, :].cpu().numpy()
             gt_bbox = np.expand_dims(_set_axis_align_bbox(gt_pc), axis=0)
@@ -486,7 +487,8 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 gt_anchor_bboxs=gt_anchor_bboxs,
                 sr3d_data=inputs[0]['sr3d_data'][0],
                 anchor_pcs=anchor_pcs,
-                anchor_bboxs=anchor_bboxs
+                anchor_bboxs=anchor_bboxs,
+                show_pred_box=np.all(np.isfinite(top_bboxs[0]))
             )
 
         self.detection_results.append(detected)
@@ -507,8 +509,8 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         if self.cfg.TEST_DATASET_INFERENCE:
             try:
                 Path(self.cfg.TEST_RESULT_EXPORT_PATH).mkdir(parents=True, exist_ok=True)
-                print(f'exporting test results to {self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json')
-                with open(f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results.json', 'w') as json_file:
+                print(f'exporting test results to {self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results_zero.json')
+                with open(f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results_zero.json', 'w') as json_file:
                     json.dump(detection_results, json_file, indent=4)
             except Exception as e:
                 print(f"Error exporting test results: {e}")
