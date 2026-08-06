@@ -219,9 +219,9 @@ def add_maskformer2_video_config(cfg):
     cfg.INPUT.FRAME_LEFT_2D = cfg.INPUT.FRAME_LEFT
     cfg.INPUT.FRAME_RIGHT_2D = cfg.INPUT.FRAME_RIGHT
     cfg.INPUT.SAMPLING_FRAME_NUM_2D = cfg.INPUT.SAMPLING_FRAME_NUM
-    cfg.TEST.SUBSAMPLE_DATA = 2
+    cfg.TEST.SUBSAMPLE_DATA = 1
     cfg.TRAIN_SUBSAMPLE_DATA = None
-    cfg.DATASETS.TEST_SUBSAMPLED = ['scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','sr3d_ref_scannet_val_single_batched', 'scannet200_context_instance_train_200cls_single_highres_100k']
+    cfg.DATASETS.TEST_SUBSAMPLED = ['vigil3d_ref_scannet_val_single_batched','vigil3d_ref_scannet_zero_target_batched','scanrefer_scannet_anchor_val_single_batched']#['scanrefer_scannet_anchor_val_single_batched','nr3d_ref_scannet_anchor_val_single_batched','sr3d_ref_scannet_val_single_batched', 'scannet200_context_instance_train_200cls_single_highres_100k']
     cfg.DATASETS.TRAIN_SUBSAMPLED = []
     cfg.NOT_USE_WD_PRETRAINED = False
     cfg.MEAN_CENTER = False
@@ -417,8 +417,9 @@ def add_maskformer2_video_config(cfg):
     cfg.DEPTH_NOISE_STD = 0.01
     cfg.DINO_EVAL_BATCH = False
     cfg.DINO_EVAL_BATCH_SIZE = 1
-    cfg.TEST_DATASET_INFERENCE = False
-    cfg.TEST_RESULT_EXPORT_PATH = None
+    cfg.TEST_DATASET_INFERENCE = True
+    cfg.TEST_RESULT_EXPORT_PATH = "tests/vigil3d"
+    cfg.TEST_RESULT_EXPORT_FILENAME = "test_results_scannet"
     cfg.WANDB_ENTITY = "sara-buttau"
     cfg.AR_LLM = False
     cfg.AR_EMBED = False

@@ -435,7 +435,7 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
                 mask_result[i, :] = np.any(mask_detected[:self.topks[i], :], axis=0)
 
         except Exception as e:
-            if self.cfg.VIZ_EXTRA_REF or self.cfg.TEST_DATASET_INFERENCE:
+            if self.cfg.VIZ_EXTRA_REF or self.cfg.VISUALIZE_REF or self.cfg.TEST_DATASET_INFERENCE:
                 print(f"Skipping visualization for {e}. GT Target not found")
                 detected = np.zeros((len(self.topks), len(self.thresholds)), dtype=bool)
                 mask_result = np.zeros((len(self.topks), len(self.thresholds)), dtype=bool)
@@ -509,8 +509,10 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         if self.cfg.TEST_DATASET_INFERENCE:
             try:
                 Path(self.cfg.TEST_RESULT_EXPORT_PATH).mkdir(parents=True, exist_ok=True)
-                print(f'exporting test results to {self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results_zero.json')
-                with open(f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_test_results_zero.json', 'w') as json_file:
+                output_filename = getattr(self.cfg, 'TEST_RESULT_EXPORT_FILENAME', f'{self.dataset_name}_test_results.json')
+                output_path = f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_{output_filename}.json'
+                print(f'exporting test results to {output_path}')
+                with open(output_path, 'w') as json_file:
                     json.dump(detection_results, json_file, indent=4)
             except Exception as e:
                 print(f"Error exporting test results: {e}")
