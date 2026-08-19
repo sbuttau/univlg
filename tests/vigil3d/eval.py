@@ -1,23 +1,66 @@
 import json
 import numpy as np
 import torch
+import pandas as pd
+import argparse
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 from torchmetrics_ext.metrics.visual_grounding import ViGiL3DMetric
 from prettytable import PrettyTable
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--test_results', default='tests/vigil3d/vigil3d_ref_scannet_all_batched_test_results_scannet_converted_aligned.json', help='path to converted test results JSON')
+parser.add_argument('--scannet_csv', default='data/vigil3d/vigil3d_scannet.csv')
+parser.add_argument('--scannetpp_csv', default=None, help='path to scannetpp csv (optional)')
+args = parser.parse_args()
+
 print("Loading data...")
-ds = load_dataset("3dlg-hcvc/vigil3d", split="validation")
-flags = {f"{r['scene_id']}_{r['ann_id']}": r for r in ds}
+
+# # Load from HuggingFace
+# ds = load_dataset("3dlg-hcvc/vigil3d", split="validation")
+# flags = {f"{r['scene_id']}_{r['ann_id']}": r for r in ds}
+
+# Load from CSV
+ds_scannet = pd.read_csv(args.scannet_csv)
+# dopo aver caricato il CSV
+rename_map = {
+    'num_attribute_type_number': 'attribute_type_number',
+    'num_attribute_type_color': 'attribute_type_color',
+    'num_attribute_type_state': 'attribute_type_state',
+    'num_attribute_type_text_label': 'attribute_type_text_label',
+    'num_relationship_type_far': 'relationship_type_far',
+    'num_relationship_type_arrangement': 'relationship_type_arrangement',
+    'num_relationship_type_ordinal': 'relationship_type_ordinal',
+    'num_relationship_type_comparison': 'relationship_type_comparison',
+    'num_anchor_type_single': 'anchor_type_single',
+    'num_anchor_type_multiple': 'anchor_type_multiple',
+    'num_anchor_type_non_object': 'anchor_type_non_object',
+    'num_anchor_type_viewpoint': 'anchor_type_viewpoint',
+    'num_negation': 'negation',
+    'num_target_not_first_np': 'target_not_first_np',
+    'num_coreferences': 'coreferences',
+}
+if args.scannetpp_csv is not None:
+    ds_scannetpp = pd.read_csv(args.scannetpp_csv)
+    ds = pd.concat([ds_scannet, ds_scannetpp], ignore_index=True)
+else:
+    ds = ds_scannet.rename(columns=rename_map)
+    # ds = ds_scannet
+flags = {f"{r['scene_id']}_{r['prompt_id']}": r.to_dict() for _, r in ds.iterrows()}
 
 path = hf_hub_download(repo_id="torchmetrics-ext/metadata",
                        filename="scannetv2/obj_aabbs_validation.npz",
                        repo_type="dataset")
 meta = np.load(path)
 
-preds_aligned = json.load(open('tests/vigil3d/vigil3d_ref_scannet_val_single_batched_test_results_converted.json'))
+preds_aligned = json.load(open(args.test_results))
 preds_torch = {k: torch.tensor(v, dtype=torch.float32) for k, v in preds_aligned.items()}
-
+# ── conteggio predizioni ──────────────────────────────────────────────────────
+n_preds   = len(preds_aligned)
+n_in_csv  = sum(1 for k in preds_aligned if k in flags)
+n_out_csv = n_preds - n_in_csv
+print(f"Predictions in test_results: {n_preds}  "
+      f"(matched in CSV: {n_in_csv}, total in csv: {len(flags)}, missing from eval: {len(flags) - n_in_csv})")
 base_metric = ViGiL3DMetric(split="validation", strict=False)
 gt_data = base_metric.gt_data
 
@@ -38,7 +81,12 @@ for key, pred_box in preds_aligned.items():
     if key not in flags:
         continue
     row = flags[key]
-    gt_key = f"{row['scene_id']}_{row['object_ids'][0]}"
+    object_id = row.get('object_id')
+    if pd.isna(object_id):
+        continue
+    # prendi il primo id in caso di multi-target
+    object_id = str(object_id).split(',')[0].strip()
+    gt_key = f"{row['scene_id']}_{object_id}"
     if gt_key not in meta:
         continue
     iou_results[key] = {"iou": box_iou_3d(pred_box[0], meta[gt_key].tolist()), "flags": row}
@@ -93,9 +141,9 @@ univlg_f1_50    = f1_pred(threshold=0.50)
 t6.add_row([
     "UniVLG",
     f"{univlg_acc_gt_25:.1f}",
-    f"{univlg_acc_gt_25:.1f}",   # Acc@25 pred ≈ Acc/GT per ST
+    f"{univlg_acc_gt_25:.1f}",
     f"{univlg_acc_gt_50:.1f}",
-    f"{univlg_acc_gt_25:.1f}",   # F1/GT ≈ Acc/GT for ST
+    f"{univlg_acc_gt_25:.1f}",
     f"{univlg_f1_25:.1f}" if univlg_f1_25 is not None else "-",
     f"{univlg_f1_50:.1f}" if univlg_f1_50 is not None else "-",
 ])
@@ -105,26 +153,44 @@ print(t6)
 
 # ------------------------------------------------------------------ Table 7
 
+# subgroups = {
+#     "Overall":  None,
+#     "Num":      lambda r: r["attribute_type_number"],
+#     "Lab":      lambda r: r["attribute_type_text_label"],
+#     "State":    lambda r: r["attribute_type_state"],
+#     "Far":      lambda r: r["relationship_type_far"],
+#     "Arr":      lambda r: r["relationship_type_arrangement"],
+#     "Ord":      lambda r: r["relationship_type_ordinal"],
+#     "Comp":     lambda r: r["relationship_type_comparison"],
+#     "Gen":      lambda r: r["granularity"] == "generic",
+#     "CG":       lambda r: r["granularity"] == "coarse-grained",
+#     "FG":       lambda r: r["granularity"] == "fine-grained",
+#     "NFN":      lambda r: r["target_not_first_np"],
+#     "Sing":     lambda r: r["anchor_type_single"],
+#     "Mul":      lambda r: r["anchor_type_multiple"],
+#     "Non":      lambda r: r["anchor_type_non_object"],
+#     "Agt":      lambda r: r["anchor_type_viewpoint"],
+#     "Neg":      lambda r: r["negation"],
+# }
 subgroups = {
     "Overall":  None,
-    "Num":      lambda r: r["attribute_type_number"],
-    "Lab":      lambda r: r["attribute_type_text_label"],
-    "State":    lambda r: r["attribute_type_state"],
-    "Far":      lambda r: r["relationship_type_far"],
-    "Arr":      lambda r: r["relationship_type_arrangement"],
-    "Ord":      lambda r: r["relationship_type_ordinal"],
-    "Comp":     lambda r: r["relationship_type_comparison"],
+    "Num":      lambda r: r["attribute_type_number"] > 0,
+    "Lab":      lambda r: r["attribute_type_text_label"] > 0,
+    "State":    lambda r: r["attribute_type_state"] > 0,
+    "Far":      lambda r: r["relationship_type_far"] > 0,
+    "Arr":      lambda r: r["relationship_type_arrangement"] > 0,
+    "Ord":      lambda r: r["relationship_type_ordinal"] > 0,
+    "Comp":     lambda r: r["relationship_type_comparison"] > 0,
     "Gen":      lambda r: r["granularity"] == "generic",
     "CG":       lambda r: r["granularity"] == "coarse-grained",
     "FG":       lambda r: r["granularity"] == "fine-grained",
-    "NFN":      lambda r: r["target_not_first_np"],
-    "Sing":     lambda r: r["anchor_type_single"],
-    "Mul":      lambda r: r["anchor_type_multiple"],
-    "Non":      lambda r: r["anchor_type_non_object"],
-    "Agt":      lambda r: r["anchor_type_viewpoint"],
-    "Neg":      lambda r: r["negation"],
+    "NFN":      lambda r: r["target_not_first_np"] > 0,
+    "Sing":     lambda r: r["anchor_type_single"] > 0,
+    "Mul":      lambda r: r["anchor_type_multiple"] > 0,
+    "Non":      lambda r: r["anchor_type_non_object"] > 0,
+    "Agt":      lambda r: r["anchor_type_viewpoint"] > 0,
+    "Neg":      lambda r: r["negation"] > 0,
 }
-
 cols = list(subgroups.keys())
 
 # baselines Table 7

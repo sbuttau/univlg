@@ -121,10 +121,16 @@ def load_ref(
         scannet_split = 'scannet200_context_instance_test_200cls_single_highres_100k'
     else:
         scannet_split = 'scannet200_context_instance_val_200cls_single_highres_100k'
+        scannet_split_train = 'scannet200_context_instance_train_200cls_single_highres_100k' 
 
 
     scannet_scenes = DatasetCatalog.get(scannet_split)
+    scannet_scenes_train = DatasetCatalog.get(scannet_split_train)
 
+    train_scene_name_to_list_id = {}
+    train_scene_offset = len(scannet_scenes)  # offset per non collidere con gli id val
+    for i, scene in enumerate(scannet_scenes_train):
+        train_scene_name_to_list_id[scene['image_id']] = i
     if subsample_scenes is not None:
         random.seed(0)
         scannet_scenes = random.sample(scannet_scenes, subsample_scenes)
@@ -137,8 +143,19 @@ def load_ref(
         tmp_sr3d_data = defaultdict(list)
         cleared_lists = []
         for sr3d_instance in sr3d_data:
-            if sr3d_instance['scan_id'] not in scene_name_to_list_id:
-                print(f"Skipping scene {sr3d_instance['scan_id']} because it's not in the dataset")
+            scan_id = sr3d_instance['scan_id']
+
+            if scan_id in scene_name_to_list_id:
+                # caso normale: scena nel val split
+                pass
+            elif scan_id in train_scene_name_to_list_id:
+                # scena trovata nel train split: aggiungila a scannet_scenes e aggiorna l'indice
+                print(f"Scene {scan_id} not in val split, loading from train split")
+                train_idx = train_scene_name_to_list_id[scan_id]
+                scene_name_to_list_id[scan_id] = len(scannet_scenes)
+                scannet_scenes.append(scannet_scenes_train[train_idx])
+            else:
+                print(f"Skipping scene {scan_id}: not found in val or train split")
                 continue
 
             if len(tmp_sr3d_data[sr3d_instance['scan_id']]) >= return_scene_batch_size:

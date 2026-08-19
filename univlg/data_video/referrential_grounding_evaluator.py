@@ -509,7 +509,7 @@ class ReferrentialGroundingEvaluator(DatasetEvaluator):
         if self.cfg.TEST_DATASET_INFERENCE:
             try:
                 Path(self.cfg.TEST_RESULT_EXPORT_PATH).mkdir(parents=True, exist_ok=True)
-                output_filename = getattr(self.cfg, 'TEST_RESULT_EXPORT_FILENAME', f'{self.dataset_name}_test_results.json')
+                output_filename = getattr(self.cfg, 'TEST_RESULT_EXPORT_FILENAME', f'{self.dataset_name}_test_results_full_scannet.json')
                 output_path = f'{self.cfg.TEST_RESULT_EXPORT_PATH}/{self.dataset_name}_{output_filename}.json'
                 print(f'exporting test results to {output_path}')
                 with open(output_path, 'w') as json_file:
