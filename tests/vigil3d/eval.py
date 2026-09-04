@@ -182,7 +182,7 @@ subgroups = {
     "Ord":      lambda r: r["relationship_type_ordinal"] > 0,
     "Comp":     lambda r: r["relationship_type_comparison"] > 0,
     "Gen":      lambda r: r["granularity"] == "generic",
-    "CG":       lambda r: r["granularity"] == "coarse-grained",
+    "CG":       lambda r: r["granularity"] == "categorical",
     "FG":       lambda r: r["granularity"] == "fine-grained",
     "NFN":      lambda r: r["target_not_first_np"] > 0,
     "Sing":     lambda r: r["anchor_type_single"] > 0,

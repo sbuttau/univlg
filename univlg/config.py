@@ -417,7 +417,7 @@ def add_maskformer2_video_config(cfg):
     cfg.DEPTH_NOISE_STD = 0.01
     cfg.DINO_EVAL_BATCH = False
     cfg.DINO_EVAL_BATCH_SIZE = 1
-    cfg.TEST_DATASET_INFERENCE = True
+    cfg.TEST_DATASET_INFERENCE = False
     cfg.TEST_RESULT_EXPORT_PATH = "tests/vigil3d"
     cfg.TEST_RESULT_EXPORT_FILENAME = "test_results_scannet"
     cfg.WANDB_ENTITY = "sara-buttau"

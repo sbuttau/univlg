@@ -50,6 +50,8 @@ _PREDEFINED_SPLITS_REF = {
     'vigil3d_ref_scannet_val_single': ('vigil3d_ref.json'),
     'vigil3d_ref_scannet_multi_target': ('vigil3d_multi_target.json'),
     'vigil3d_ref_scannet_zero_target': ('vigil3d_zero_target.json'),
+    'vigil3d_ref_scannet_all': ('vigil3d_ref_scannet_all.json'),
+
 }
 
 # ignore_scene_dict = {"scene0585_01", "scene0181_02", "scene0181_02", "scene0284_00"}
